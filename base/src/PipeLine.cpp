@@ -1,9 +1,43 @@
 #include "stdafx.h"
 #include "PipeLine.h"
 #include "Module.h"
+#include <map>
+#include <string>
 
 
+const DWORD MS_VC_EXCEPTION = 0x406D1388;
+#pragma pack(push,8)
+typedef struct THREADNAME_INFO {
+	DWORD dwType; // Must be 0x1000.
+	LPCSTR szName; // Pointer to name (in user addr space).
+	DWORD dwThreadID; // Thread ID (-1=caller thread).
+	DWORD dwFlags; // Reserved for future use, must be zero.
+} THREADNAME_INFO;
+#pragma pack(pop)
 
+void _SetThreadName(DWORD threadID, const char* threadName) {
+	THREADNAME_INFO info;
+	info.dwType = 0x1000;
+	info.szName = threadName;
+	info.dwThreadID = threadID;
+	info.dwFlags = 0;
+	__try {
+		RaiseException(MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(ULONG_PTR), (ULONG_PTR*)&info);
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+	}
+}
+void SetThreadName(boost::thread::id threadId, std::string threadName) {
+	// convert string to char*
+	const char* cchar = threadName.c_str();
+	// convert HEX string to DWORD
+	unsigned int dwThreadId;
+	std::stringstream ss;
+	ss << std::hex << threadId;
+	ss >> dwThreadId;
+	// set thread name
+	_SetThreadName((DWORD)dwThreadId, cchar);
+}
 
 
 PipeLine::~PipeLine()
@@ -145,11 +179,30 @@ void PipeLine::term()
 
 void PipeLine::run_all_threaded()
 {
+	map<std::string, int> moduleMap;
+	moduleMap.insert(std::pair<std::string, int>("modulename", 0));
 	myStatus = PL_RUNNING;
 	for (auto i = modules.begin(); i != modules.end(); i++)
 	{
 		Module& m = *(i->get());
-		m.myThread=boost::thread(ref(m));
+		int flag = 0;
+		for (auto i = moduleMap.begin(); i != moduleMap.end();i++) 
+		{
+			if (m.getName() == i->first)
+			{
+				moduleMap.insert(std::pair<std::string, int>(m.getName() + to_string(i->second), (i->second)+1));
+				m.myThread = boost::thread(ref(m));
+				SetThreadName((m.myThread).get_id(), m.getName() + to_string(i->second));
+				i->second = i->second + 1;
+				flag = 1;
+			}
+		}
+		if (flag != 1)
+		{
+			moduleMap.insert(std::pair<std::string, int>(m.getName(), 1));
+			m.myThread = boost::thread(ref(m));
+			SetThreadName((m.myThread).get_id(), m.getName());
+		}
 	}
 
 	mPlay = true;
