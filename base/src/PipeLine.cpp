@@ -179,13 +179,16 @@ void PipeLine::term()
 
 void PipeLine::run_all_threaded()
 {
-	map<std::string, int> moduleMap;
-	moduleMap.insert(std::pair<std::string, int>("modulename", 0));
+	map<std::string, int> moduleMap; //unordered map
+	//moduleMap.insert(std::pair<std::string, int>("modulename", 0));
 	myStatus = PL_RUNNING;
 	for (auto i = modules.begin(); i != modules.end(); i++)
 	{
 		Module& m = *(i->get());
 		int flag = 0;
+		//Get module name,  Check if exists in moduleMap (find function) moduleMap.find(m.getName())==moduleMap.end hashing and maps (unordered,std) ,
+		//if does not exist then add to map and increment counter
+		//using name in map call setThreadname 
 		for (auto i = moduleMap.begin(); i != moduleMap.end();i++) 
 		{
 			if (m.getName() == i->first)
