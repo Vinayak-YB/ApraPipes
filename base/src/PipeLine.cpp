@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "PipeLine.h"
 #include "Module.h"
-#include <map>
+#include <unordered_map>
 #include <string>
 
 
@@ -11,7 +11,7 @@ typedef struct THREADNAME_INFO {
 	DWORD dwType; // Must be 0x1000.
 	LPCSTR szName; // Pointer to name (in user addr space).
 	DWORD dwThreadID; // Thread ID (-1=caller thread).
-	DWORD dwFlags; // Reserved for future use, must be zero.
+	DWORD dwFlags; 
 } THREADNAME_INFO;
 #pragma pack(pop)
 
@@ -179,33 +179,24 @@ void PipeLine::term()
 
 void PipeLine::run_all_threaded()
 {
-	map<std::string, int> moduleMap; //unordered map
-	//moduleMap.insert(std::pair<std::string, int>("modulename", 0));
+	unordered_map<std::string, int> moduleMap; //unordered map
 	myStatus = PL_RUNNING;
 	for (auto i = modules.begin(); i != modules.end(); i++)
 	{
-		Module& m = *(i->get());
-		int flag = 0;
-		//Get module name,  Check if exists in moduleMap (find function) moduleMap.find(m.getName())==moduleMap.end hashing and maps (unordered,std) ,
-		//if does not exist then add to map and increment counter
-		//using name in map call setThreadname 
-		for (auto i = moduleMap.begin(); i != moduleMap.end();i++) 
+		Module& m = *(i->get()); 
+		auto moduleName = m.getName();
+		auto key = moduleMap.find(moduleName);
+		if (key != moduleMap.end())
 		{
-			if (m.getName() == i->first)
-			{
-				moduleMap.insert(std::pair<std::string, int>(m.getName() + to_string(i->second), (i->second)+1));
-				m.myThread = boost::thread(ref(m));
-				SetThreadName((m.myThread).get_id(), m.getName() + to_string(i->second));
-				i->second = i->second + 1;
-				flag = 1;
-			}
+			moduleMap[moduleName] +=1;
 		}
-		if (flag != 1)
+		else
 		{
-			moduleMap.insert(std::pair<std::string, int>(m.getName(), 1));
-			m.myThread = boost::thread(ref(m));
-			SetThreadName((m.myThread).get_id(), m.getName());
+			moduleMap.insert(std::pair<std::string, int>(moduleName, 1));
 		}
+		key = moduleMap.find(moduleName);
+		m.myThread = boost::thread(ref(m));
+		SetThreadName((m.myThread).get_id(), moduleName + to_string(key->second));
 	}
 
 	mPlay = true;
