@@ -194,9 +194,8 @@ void PipeLine::run_all_threaded()
 		{
 			moduleMap.insert(std::pair<std::string, int>(moduleName, 1));
 		}
-		key = moduleMap.find(moduleName);
 		m.myThread = boost::thread(ref(m));
-		SetThreadName((m.myThread).get_id(), moduleName + to_string(key->second));
+		SetThreadName((m.myThread).get_id(), moduleName + "_" + std::to_string(moduleMap[moduleName]));
 	}
 
 	mPlay = true;
