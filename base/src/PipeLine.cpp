@@ -1,7 +1,6 @@
 #include "stdafx.h"
 #include "PipeLine.h"
 #include "Module.h"
-#include <unordered_map>
 #include <string>
 
 
@@ -179,25 +178,13 @@ void PipeLine::term()
 
 void PipeLine::run_all_threaded()
 {
-	unordered_map<std::string, int> moduleMap; //unordered map
 	myStatus = PL_RUNNING;
 	for (auto i = modules.begin(); i != modules.end(); i++)
 	{
 		Module& m = *(i->get()); 
-		auto moduleName = m.getName();
-		auto key = moduleMap.find(moduleName);
-		if (key != moduleMap.end())
-		{
-			moduleMap[moduleName] +=1;
-		}
-		else
-		{
-			moduleMap.insert(std::pair<std::string, int>(moduleName, 1));
-		}
 		m.myThread = boost::thread(ref(m));
-		SetThreadName((m.myThread).get_id(), moduleName + "_" + std::to_string(moduleMap[moduleName]));
+		SetThreadName((m.myThread).get_id(), m.getId());
 	}
-
 	mPlay = true;
 }
 
