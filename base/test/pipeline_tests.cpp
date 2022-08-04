@@ -19,7 +19,7 @@ std::unordered_map<std::string, bool> checkName = {
 	{"sinkModule_4", false}
 };
 
-void listener(const std::string& msg)
+void listenerForThreadName(const std::string& msg)
 {
 	if (msg.find("sourceModule_1")) { checkName["sourceModule_1"] = true; };
 	if (msg.find("transformModule_2")) { checkName["transformModule_2"] = true; };
@@ -108,6 +108,9 @@ struct CheckThread {
 
 BOOST_AUTO_TEST_CASE(checkThreadname)
 {
+	std::vector<std::string> pipelineLoggerFile = {"./data/testOutput/pipeline_tests_00000.log"};
+	Test_Utils::FileCleaner clean(pipelineLoggerFile);
+
 	CheckThread f;
 	LoggerProps logprops;
 	logprops.enableConsoleLog = true;
@@ -116,7 +119,7 @@ BOOST_AUTO_TEST_CASE(checkThreadname)
 	logprops.logLevel = boost::log::trivial::severity_level::info;
 	Logger::initLogger(logprops);
 
-	Logger::setListener(listener);
+	Logger::setListener(listenerForThreadName);
 
 	auto m1 = boost::shared_ptr<CheckThread::SourceModule>(new CheckThread::SourceModule(CheckThread::SourceModuleProps()));
 	auto metadata1 = framemetadata_sp(new FrameMetadata(FrameMetadata::ENCODED_IMAGE));
@@ -141,6 +144,7 @@ BOOST_AUTO_TEST_CASE(checkThreadname)
 	p.term();
 	p.wait_for_all();
 
+	// stop getting the logs
 	Logger::setListener(nullptr);
 	for (auto i = checkName.begin(); i != checkName.end(); i++)
 	{
