@@ -179,7 +179,7 @@ SET(CORE_FILES
 	src/FIndexStrategy.cpp
 	src/AudioCaptureSrc.cpp
 	src/QRReader.cpp
-	include/ValveModule.cpp
+	src/ValveModule.cpp
 )
 
 SET(CORE_FILES_H
