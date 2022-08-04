@@ -46,7 +46,7 @@
 	}
 #endif
 
-void setModuleThreadName(boost::thread thread, std::string moduleID)
+void setModuleThreadName(boost::thread &thread, std::string moduleID)
 {
 #ifdef _WIN64
 	SetThreadNameWIN((thread).get_id(), moduleID);
@@ -200,7 +200,7 @@ void PipeLine::run_all_threaded()
 	{
 		Module& m = *(i->get());
 		m.myThread = boost::thread(ref(m));
-		setModuleThreadName(m.myThread, m.getId())
+		setModuleThreadName(m.myThread, m.getId());
 	}
 	mPlay = true;
 }
