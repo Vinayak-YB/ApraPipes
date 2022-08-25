@@ -10,7 +10,8 @@ public:
 		None,
 		FileReaderModule,
 		Relay,
-		Step
+		Step,
+		MultimediaQueue
 	};
 
 	Command()
@@ -166,4 +167,30 @@ private:
 	}
 
 
+};
+
+class MultimediaQueueCommand : public Command
+{
+public:
+	MultimediaQueueCommand() : Command(Command::CommandType::MultimediaQueue)
+	{
+	}
+
+	size_t getSerializeSize()
+	{
+		return Command::getSerializeSize() + sizeof(startTime) + sizeof(endTime);
+	}
+
+	int startTime = 0; 
+	int endTime = 0;
+
+private:
+	friend class boost::serialization::access;
+	template<class Archive>
+	void serialize(Archive& ar, const unsigned int /* file_version */)
+	{
+		ar& boost::serialization::base_object<Command>(*this);
+		ar& startTime;
+		ar& endTime;
+	}
 };
