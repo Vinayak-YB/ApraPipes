@@ -9,6 +9,9 @@
 #include "AIPExceptions.h"
 #include "test_utils.h"
 #include <vector>
+#include <ExternalSinkModule.h>
+#include<Module.h>
+#include "FrameContainerQueue.h"
 
 BOOST_AUTO_TEST_SUITE(multimediaqueue_tests)
 
@@ -25,6 +28,10 @@ public:
     SinkModule(SinkModuleProps props) : Module(SINK, "sinkModule", props)
     {};
     boost::shared_ptr<FrameContainerQueue> getQue() { return Module::getQue(); }
+    frame_container pop()
+    {
+        return Module::pop();
+    }
 
 protected:
     bool process() {};
@@ -40,33 +47,36 @@ protected:
 
 BOOST_AUTO_TEST_CASE(basic)
 {
-    std::string inFolderPath = "./data/Raw_YUV420_640x360/";
+    std::string inFolderPath = "./data/Raw_YUV420_640x360";
     auto fileReaderProps = FileReaderModuleProps(inFolderPath, 0, -1, 4 * 1024 * 1024);
-    fileReaderProps.fps = 100;
+    fileReaderProps.fps = 24;
     fileReaderProps.readLoop = true;
     auto fileReader = boost::shared_ptr<Module>(new FileReaderModule(fileReaderProps));
     auto metadata = framemetadata_sp(new RawImageMetadata(640, 360, ImageMetadata::ImageType::RGB, CV_8UC3, 0, CV_8U, FrameMetadata::HOST, true));
     auto pinId  =  fileReader->addOutputPin(metadata);
 
 	auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps()));
-    fileReader->setNext(multiQueue);
+    fileReader->setNext(multiQueue, true, false);
     auto sink = boost::shared_ptr<SinkModule>(new SinkModule(SinkModuleProps()));
     multiQueue->addOutputPin(metadata);
-    multiQueue->setNext(sink);
+    multiQueue->setNext(sink, true, false);
 
 	BOOST_TEST(fileReader->init());
 	BOOST_TEST(multiQueue->init());
     BOOST_TEST(sink->init());
-    for (auto it = 0; it < 15; it++)
+    auto sinkQueue = sink->getQue();
+    for (int i = 0; i < 21; i++)
     {
         fileReader->step();
         multiQueue->step();
+        if (i == 19)
+        {
+            auto pop = sinkQueue->pop();
+        }
     }
-    auto sinkQue = sink->getQue();
-
-
- 
-
+    //auto popFrames = sink->
+   
+    BOOST_TEST(sinkQueue->size()==1);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

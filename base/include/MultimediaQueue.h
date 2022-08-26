@@ -39,9 +39,8 @@ protected:
 	bool validateInputPins();
 	bool validateOutputPins();
 	bool validateInputOutputPins();
-	void addInputPin(framemetadata_sp& metadata, string& pinId);
-	bool handleCommand(Command::CommandType type, frame_sp& frame);
-	bool handlePropsChange(frame_sp& frame);
+	//void addInputPin(framemetadata_sp& metadata, string& pinId);
+	
 
 private:
 	class Detail;
