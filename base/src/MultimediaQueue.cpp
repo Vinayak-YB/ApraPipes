@@ -5,14 +5,15 @@
 #include "MultimediaQueue.h"
 #include "Logger.h"
 #include "AIPExceptions.h"
+#include "stdafx.h"
 
-class MultimediaQueueStrategy 
+class DetailAbs 
 {
 
 public:
-	MultimediaQueueStrategy(MultimediaQueueProps& _props) {}
-
-	virtual ~MultimediaQueueStrategy()
+	DetailAbs(MultimediaQueueProps& _props) {}
+	
+	virtual ~DetailAbs()
 	{
 
 	}
@@ -33,18 +34,19 @@ public:
 		return false;
 	}
 	friend class State;
-	typedef std::map<int64_t, frame_container> MultimediaQueue;
-	MultimediaQueue mQueue;
+	typedef std::map<int64_t, frame_container> MultimediaQueueMap;
+	MultimediaQueueMap mQueue;
 protected:
 	std::string getMultimediaQueuePinId(const std::string& pinId)
 	{
 		return pinId ;
 	}
+private:
+	//MultimediaQueueProps mProps;
 };
 
 class Idle : public State {
 public:
-	MultimediaQueueStrategy& qObj;
 	void startExport(int64_t ts) 
 	{
 		//if (qObj.mQueue.size() )
@@ -65,13 +67,13 @@ public:
 };
 //Strategy begins here
 
-class TimeStampStrategy : public MultimediaQueueStrategy
+class DetailJpeg : public DetailAbs
 {
 
 public:
-	TimeStampStrategy(MultimediaQueueProps& _props) :MultimediaQueueStrategy(_props), maxQueueLength(_props.maxQueueLength) {}
+	DetailJpeg(MultimediaQueueProps& _props) :DetailAbs(_props), maxQueueLength(_props.maxQueueLength) {}
 
-	~TimeStampStrategy()
+	~DetailJpeg()
 	{
 		
 	}
@@ -100,7 +102,7 @@ public:
 
 	bool get(frame_container& frames)
 	{
-		frames[MultimediaQueueStrategy::getMultimediaQueuePinId(mQueue.begin()->second.begin()->first)] = mQueue.begin()->second.begin()->second;
+		frames[DetailAbs::getMultimediaQueuePinId(mQueue.begin()->second.begin()->first)] = mQueue.begin()->second.begin()->second;
 		return true;
 	}
 
@@ -113,10 +115,9 @@ private:
 
 // Methods
 
-MultimediaQueue::MultimediaQueue(MultimediaQueueProps _props) :Module(TRANSFORM, "MultimediaQueue", _props)
+MultimediaQueue::MultimediaQueue(MultimediaQueueProps _props) :Module(TRANSFORM, "MultimediaQueue", _props),mProps(_props)
 {
-	mDetail.reset(new TimeStampStrategy(_props));
-	
+	mDetail.reset(new DetailJpeg(_props));
 }
 
 bool MultimediaQueue::validateInputPins()
@@ -153,10 +154,10 @@ bool MultimediaQueue::term()
 
 void MultimediaQueue::transitionTo(State* state)
 {
-	if (state_ != nullptr)
-		delete state_;
+	/*if (state_ != nullptr)
+		delete state_;*/
 	state_ = state;
-	state_->set_multimediaQueue(this);
+	state_->set_multimediaQueue(this); 
 }
 
 void MultimediaQueue::requestStart(int64_t ts)
@@ -176,8 +177,9 @@ bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 	{
 		MultimediaQueueCommand cmd;
 		getCommand(cmd, frame);
-		requestStart(cmd.startTime);
-		requestStop(cmd.endTime);
+		MultimediaQueue* multiQueObj = new MultimediaQueue(new Idle,mProps);
+		multiQueObj->requestStart(cmd.startTime);
+		multiQueObj->requestStop(cmd.endTime);
 		return true;
 	}
 }

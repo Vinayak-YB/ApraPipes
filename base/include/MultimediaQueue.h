@@ -18,7 +18,7 @@ public:
 		strategy = JPEG;
 		fIndexStrategyType = FIndexStrategy::FIndexStrategyType::NONE;
 	}
-
+	
 	int maxQueueLength; // Length of multimedia queue
 	Strategy strategy;
 };
@@ -32,24 +32,25 @@ public:
 	virtual ~State() {}
 
 	void set_multimediaQueue(MultimediaQueue* multimediaQueue) {
-		this->multimediaQueue_ = multimediaQueue;
+		multimediaQueue_ = multimediaQueue;
 	}
 	virtual void startExport(int64_t ts) = 0;
 	virtual void stopExport(int64_t te) = 0;
 
 };
 
-class MultimediaQueueStrategy;
+class DetailAbs;
 
 class MultimediaQueue : public Module {
 public:
 	MultimediaQueue(MultimediaQueueProps _props = MultimediaQueueProps());
-	MultimediaQueue(State* state) : state_(nullptr)
+
+	MultimediaQueue(State* state, MultimediaQueueProps _props = MultimediaQueueProps()) : Module(TRANSFORM, "MultimediaQueue",_props)
 	{
 		transitionTo(state);
 	}
 	virtual ~MultimediaQueue() {
-		delete state_;
+		//delete state_;
 	}
 
 	bool init();
@@ -70,6 +71,7 @@ protected:
 
 private:
 	class Detail;
-	boost::shared_ptr<MultimediaQueueStrategy> mDetail;
-	State *state_;
+	boost::shared_ptr<DetailAbs> mDetail;
+	State *state_ ;
+	MultimediaQueueProps mProps;
 };
