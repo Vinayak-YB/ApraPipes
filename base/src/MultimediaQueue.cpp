@@ -6,7 +6,7 @@
 #include "Logger.h"
 #include "AIPExceptions.h"
 
-class MultimediaQueueStrategy
+class MultimediaQueueStrategy 
 {
 
 public:
@@ -32,7 +32,9 @@ public:
 	{
 		return false;
 	}
-
+	friend class State;
+	typedef std::map<int64_t, frame_container> MultimediaQueue;
+	MultimediaQueue mQueue;
 protected:
 	std::string getMultimediaQueuePinId(const std::string& pinId)
 	{
@@ -40,6 +42,27 @@ protected:
 	}
 };
 
+class Idle : public State {
+public:
+	MultimediaQueueStrategy& qObj;
+	void startExport(int64_t ts) 
+	{
+		//if (qObj.mQueue.size() )
+	};
+	void stopExport(int64_t te) {};
+};
+
+class Waiting : public State {
+public:
+	void startExport(int64_t ts) {};
+	void stopExport(int64_t te) {};
+};
+
+class Export : public State {
+public:
+	void startExport(int64_t ts) {};
+	void stopExport(int64_t te) {};
+};
 //Strategy begins here
 
 class TimeStampStrategy : public MultimediaQueueStrategy
@@ -52,7 +75,6 @@ public:
 	{
 		
 	}
-
 
 	bool queue(frame_container& frames)
 	{
@@ -83,9 +105,7 @@ public:
 	}
 
 private:
-
-	typedef std::map<int64_t, frame_container> MultimediaQueue; // pinId and frame queue
-	MultimediaQueue mQueue;
+	
 	double maxQueueLength;
 	int maxDelay;
 
@@ -96,6 +116,7 @@ private:
 MultimediaQueue::MultimediaQueue(MultimediaQueueProps _props) :Module(TRANSFORM, "MultimediaQueue", _props)
 {
 	mDetail.reset(new TimeStampStrategy(_props));
+	
 }
 
 bool MultimediaQueue::validateInputPins()
@@ -130,6 +151,45 @@ bool MultimediaQueue::term()
 	return Module::term();
 }
 
+void MultimediaQueue::transitionTo(State* state)
+{
+	if (state_ != nullptr)
+		delete state_;
+	state_ = state;
+	state_->set_multimediaQueue(this);
+}
+
+void MultimediaQueue::requestStart(int64_t ts)
+{
+	//state_ = (new Idle());
+	state_->startExport(ts);
+}
+
+void MultimediaQueue::requestStop(int64_t te)
+{
+	state_->stopExport(te);
+}
+
+bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
+{
+	if (type == Command::CommandType::MultimediaQueue)
+	{
+		MultimediaQueueCommand cmd;
+		getCommand(cmd, frame);
+		requestStart(cmd.startTime);
+		requestStop(cmd.endTime);
+		return true;
+	}
+}
+
+bool MultimediaQueue::allowFrames(int64_t Ts, int64_t Te)
+{
+	MultimediaQueueCommand cmd;
+	cmd.startTime = Ts;
+	cmd.endTime = Te;
+	return queueCommand(cmd);
+}
+
 bool MultimediaQueue::process(frame_container& frames)
 {
 
@@ -144,3 +204,4 @@ bool MultimediaQueue::process(frame_container& frames)
 	// LOG_ERROR << "Sending frames from multimedia queue";
 	return true;
 }
+

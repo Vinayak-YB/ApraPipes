@@ -181,8 +181,8 @@ public:
 		return Command::getSerializeSize() + sizeof(startTime) + sizeof(endTime);
 	}
 
-	int startTime = 0; 
-	int endTime = 0;
+	int64_t startTime = 0; 
+	int64_t endTime = 0;
 
 private:
 	friend class boost::serialization::access;

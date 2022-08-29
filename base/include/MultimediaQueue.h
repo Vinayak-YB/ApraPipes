@@ -2,6 +2,7 @@
 
 #include "Module.h"
 
+class MultimediaQueue;
 class MultimediaQueueProps : public ModuleProps
 {
 public:
@@ -22,17 +23,42 @@ public:
 	Strategy strategy;
 };
 
+class State {
+
+protected:
+	MultimediaQueue* multimediaQueue_;
+
+public:
+	virtual ~State() {}
+
+	void set_multimediaQueue(MultimediaQueue* multimediaQueue) {
+		this->multimediaQueue_ = multimediaQueue;
+	}
+	virtual void startExport(int64_t ts) = 0;
+	virtual void stopExport(int64_t te) = 0;
+
+};
+
 class MultimediaQueueStrategy;
 
 class MultimediaQueue : public Module {
 public:
-
 	MultimediaQueue(MultimediaQueueProps _props = MultimediaQueueProps());
-	virtual ~MultimediaQueue() {}
+	MultimediaQueue(State* state) : state_(nullptr)
+	{
+		transitionTo(state);
+	}
+	virtual ~MultimediaQueue() {
+		delete state_;
+	}
 
-	virtual bool init();
-	virtual bool term();
-
+	bool init();
+	bool term();
+	void transitionTo(State* state);
+	void requestStart(int64_t Ts);
+	void requestStop(int64_t Te);
+	bool handleCommand(Command::CommandType type, frame_sp &frame);
+	bool allowFrames(int64_t Ts, int64_t Te);
 
 protected:
 	bool process(frame_container& frames);
@@ -45,4 +71,5 @@ protected:
 private:
 	class Detail;
 	boost::shared_ptr<MultimediaQueueStrategy> mDetail;
+	State *state_;
 };
