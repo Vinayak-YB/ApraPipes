@@ -23,12 +23,12 @@ public:
 	//	return getMultimediaQueuePinId(pinId);
 	//}
 
+
 	virtual bool queue(frame_container& frames)
 	{
 
 		return true;
 	}
-
 	virtual bool get(frame_container& frames)
 	{
 		return false;
@@ -49,7 +49,8 @@ class Idle : public State {
 public:
 	void startExport(int64_t ts) 
 	{
-		//if (qObj.mQueue.size() )
+		//if (qObj.mQueue.)
+		
 	};
 	void stopExport(int64_t te) {};
 };
@@ -105,7 +106,7 @@ public:
 		frames[DetailAbs::getMultimediaQueuePinId(mQueue.begin()->second.begin()->first)] = mQueue.begin()->second.begin()->second;
 		return true;
 	}
-
+	
 private:
 	
 	double maxQueueLength;
@@ -137,6 +138,7 @@ bool MultimediaQueue::validateInputOutputPins()
 
 bool MultimediaQueue::init()
 {
+	MultimediaQueue* multiQueObj = new MultimediaQueue(new Idle, mProps);
 	if (!Module::init())
 	{
 		return false;
@@ -177,7 +179,7 @@ bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 	{
 		MultimediaQueueCommand cmd;
 		getCommand(cmd, frame);
-		MultimediaQueue* multiQueObj = new MultimediaQueue(new Idle,mProps);
+		MultimediaQueue* multiQueObj = new MultimediaQueue(new Idle, mProps);
 		multiQueObj->requestStart(cmd.startTime);
 		multiQueObj->requestStop(cmd.endTime);
 		return true;

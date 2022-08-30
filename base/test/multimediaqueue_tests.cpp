@@ -65,8 +65,6 @@ BOOST_AUTO_TEST_CASE(basic)
 	BOOST_TEST(multiQueue->init());
     BOOST_TEST(sink->init());
     auto sinkQueue = sink->getQue();
-    multiQueue->allowFrames(12, 50);
-    multiQueue->step();
     for (int i = 0; i < 21; i++)
     {
         fileReader->step();
@@ -76,6 +74,8 @@ BOOST_AUTO_TEST_CASE(basic)
             auto pop = sinkQueue->pop();
         }
     }
+    multiQueue->allowFrames(12, 50);
+    multiQueue->step();
     //auto popFrames = sink->
    
     BOOST_TEST(sinkQueue->size()==1);

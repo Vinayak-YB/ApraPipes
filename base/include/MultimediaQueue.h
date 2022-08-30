@@ -23,23 +23,29 @@ public:
 	Strategy strategy;
 };
 
+class DetailAbs;
+
 class State {
 
 protected:
-	MultimediaQueue* multimediaQueue_;
+	
 
 public:
+	MultimediaQueue* multimediaQueue_;
+
 	virtual ~State() {}
 
-	void set_multimediaQueue(MultimediaQueue* multimediaQueue) {
+	void set_multimediaQueue(MultimediaQueue* multimediaQueue)
+	{
 		multimediaQueue_ = multimediaQueue;
 	}
+	boost::shared_ptr<DetailAbs> mDetail = multimediaQueue_->mDetail;
 	virtual void startExport(int64_t ts) = 0;
 	virtual void stopExport(int64_t te) = 0;
 
 };
 
-class DetailAbs;
+
 
 class MultimediaQueue : public Module {
 public:
@@ -67,10 +73,9 @@ protected:
 	bool validateOutputPins();
 	bool validateInputOutputPins();
 	//void addInputPin(framemetadata_sp& metadata, string& pinId);
-	
 
 private:
-	class Detail;
+	friend class State;
 	boost::shared_ptr<DetailAbs> mDetail;
 	State *state_ ;
 	MultimediaQueueProps mProps;
