@@ -39,7 +39,8 @@ public:
 	{
 		multimediaQueue_ = multimediaQueue;
 	}
-	boost::shared_ptr<DetailAbs> mDetail = multimediaQueue_->mDetail;
+
+	boost::shared_ptr<DetailAbs> mDetail;
 	virtual void startExport(int64_t ts) = 0;
 	virtual void stopExport(int64_t te) = 0;
 
@@ -75,7 +76,6 @@ protected:
 	//void addInputPin(framemetadata_sp& metadata, string& pinId);
 
 private:
-	friend class State;
 	boost::shared_ptr<DetailAbs> mDetail;
 	State *state_ ;
 	MultimediaQueueProps mProps;

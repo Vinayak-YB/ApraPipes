@@ -49,9 +49,8 @@ class Idle : public State {
 public:
 	void startExport(int64_t ts) 
 	{
-		//if (qObj.mQueue.)
-		
 	};
+
 	void stopExport(int64_t te) {};
 };
 
@@ -138,7 +137,6 @@ bool MultimediaQueue::validateInputOutputPins()
 
 bool MultimediaQueue::init()
 {
-	MultimediaQueue* multiQueObj = new MultimediaQueue(new Idle, mProps);
 	if (!Module::init())
 	{
 		return false;
