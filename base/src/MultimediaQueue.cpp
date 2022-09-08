@@ -6,92 +6,34 @@
 #include "Logger.h"
 #include "AIPExceptions.h"
 #include "stdafx.h"
+#include <string>
+#include <chrono>
+#include <sstream>
+#include <iomanip>
 
-class DetailAbs 
+const std::string timeFormat{ "%Y%m%d %H:%M:%S" };
+
+class queueClass 
 {
 
 public:
-	DetailAbs(MultimediaQueueProps& _props) {}
+	queueClass(MultimediaQueueProps& _props) {}
 	
-	virtual ~DetailAbs()
-	{
-
-	}
-
-	//virtual std::string addInputPin(std::string& pinId)
-	//{
-	//	return getMultimediaQueuePinId(pinId);
-	//}
-
-
-	virtual bool queue(frame_container& frames)
-	{
-
-		return true;
-	}
-	virtual bool get(frame_container& frames)
-	{
-		return false;
-	}
-	friend class State;
-	typedef std::map<int64_t, frame_container> MultimediaQueueMap;
-	MultimediaQueueMap mQueue;
-protected:
-	std::string getMultimediaQueuePinId(const std::string& pinId)
-	{
-		return pinId ;
-	}
-private:
-	//MultimediaQueueProps mProps;
-};
-
-class Idle : public State {
-public:
-	void startExport(int64_t ts) 
-	{
-	};
-
-	void stopExport(int64_t te) {};
-};
-
-class Waiting : public State {
-public:
-	void startExport(int64_t ts) {};
-	void stopExport(int64_t te) {};
-};
-
-class Export : public State {
-public:
-	void startExport(int64_t ts) {};
-	void stopExport(int64_t te) {};
-};
-//Strategy begins here
-
-class DetailJpeg : public DetailAbs
-{
-
-public:
-	DetailJpeg(MultimediaQueueProps& _props) :DetailAbs(_props), maxQueueLength(_props.maxQueueLength) {}
-
-	~DetailJpeg()
-	{
-		
-	}
+	~queueClass()
+	{}
 
 	bool queue(frame_container& frames)
 	{
-		// add all the frames to the que
-		// store the most recent fIndex
 		int64_t largestTimeStamp = 0;
 		for (auto it = frames.cbegin(); it != frames.cend(); it++)
 		{
-			mQueue.insert({ it->second->timestamp, frames});
+			mQueue.insert({ it->second->timestamp, frames });
 			if (largestTimeStamp < it->second->timestamp)
 			{
 				largestTimeStamp = it->second->timestamp;
 			}
 		}
-		
+
 		if (largestTimeStamp - mQueue.begin()->first > maxQueueLength)
 		{
 			mQueue.erase(mQueue.begin()->first);
@@ -102,22 +44,108 @@ public:
 
 	bool get(frame_container& frames)
 	{
-		frames[DetailAbs::getMultimediaQueuePinId(mQueue.begin()->second.begin()->first)] = mQueue.begin()->second.begin()->second;
+		frames[queueClass::getMultimediaQueuePinId(mQueue.begin()->second.begin()->first)] = mQueue.begin()->second.begin()->second;
 		return true;
 	}
-	
-private:
-	
-	double maxQueueLength;
-	int maxDelay;
+	void startExport(int64_t ts) {};
+	void stopExport(int64_t te) {};
+	typedef std::map<int64_t, frame_container> MultimediaQueueMap;
+	MultimediaQueueMap mQueue;
 
+protected:
+
+	double maxQueueLength = 100000;
+	int maxDelay;
+protected:
+	std::string getMultimediaQueuePinId(const std::string& pinId)
+	{
+		return pinId ;
+	}
+private:
+	//MultimediaQueueProps mProps;
 };
 
-// Methods
+class Waiting : public State {
+public:
+	Waiting() : State(State::StateType::Waiting) {}
+	bool handleExport(int64_t ts, int64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& queueMap) override
+	{
+		//auto queueMap = queueObject->mQueue;
+		auto tOld = queueMap.begin()->first;
+		auto Temp = queueMap.end();
+		Temp--;
+		auto tNew = Temp->first;
+		//The code will change here
+		//auto queueMap = queueObject->mQueue;
+		frames.push_back(queueMap.begin()->second);
+		return true;
+	}
+};
+
+class Export : public State {
+public:
+	Export() : State(StateType::Export) {}
+	Export(mQueueMap mQueue)
+	{
+	}
+
+	bool handleExport(int64_t ts, int64_t te, std::vector<frame_container>& frames, bool & timeReset, mQueueMap& queueMap) override
+	{
+		//auto queueMap = queueObject->mQueue;
+		auto tOld = queueMap.begin()->first;
+		auto Temp = queueMap.end();
+		Temp--;
+		auto tNew = Temp->first;
+
+		if ((ts < tOld) && (queueMap.upper_bound(te)!=queueMap.end()))
+		{
+			//To Do : Add the case where the frame container stop coming
+			//Current assumption is that frame containers are coming at all time 
+			for (auto it = queueMap.begin(); it != queueMap.lower_bound(te); it++)
+			{
+				frames.push_back(it->second);
+			}
+	
+			return true;
+		}
+		else if ((te > tNew) && (queueMap.upper_bound(ts) != queueMap.end()))
+		{
+			for (auto it = queueMap.upper_bound(ts); it != queueMap.end(); it++)
+			{
+				frames.push_back(it->second);
+			}
+			return true;
+		}
+		else
+		{
+			for (auto it = queueMap.upper_bound(ts); it != queueMap.lower_bound(te); it++)
+			{
+				frames.push_back(it->second);
+			}
+			return true;
+		}
+	}
+};
+//Strategy begins here
+
+
+
+class Idle : public State {
+public:
+	Idle() : State(StateType::Idle) {}
+	bool handleExport(int64_t ts, int64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& queueMap) override
+	{
+		//The code will change here
+		//auto queueMap = queueObject->mQueue;
+		frames.push_back(queueMap.begin()->second);
+		return true;
+	}
+};
 
 MultimediaQueue::MultimediaQueue(MultimediaQueueProps _props) :Module(TRANSFORM, "MultimediaQueue", _props),mProps(_props)
 {
-	mDetail.reset(new DetailJpeg(_props));
+	mState.reset(new State(_props));
+	mState->queueObject.reset(new queueClass(_props));
 }
 
 bool MultimediaQueue::validateInputPins()
@@ -142,33 +170,48 @@ bool MultimediaQueue::init()
 		return false;
 	}
 
+	mState->currentState = new Idle;
 
 	return true;
 }
 
 bool MultimediaQueue::term()
 {
-	mDetail.reset();
+	mState.reset();
 	return Module::term();
+}
+
+void MultimediaQueue::getState(int64_t tStart, int64_t tStop)
+{
+	auto queueMap = mState->queueObject->mQueue;
+	auto tOld = queueMap.begin()->first;
+	auto Temp = queueMap.end();
+	Temp--;
+	auto tNew = Temp->first;
+
+	//Check conditions and determine the new state to transition to.
+	
+	if (tStop < tOld)
+	{
+		LOG_ERROR << "THE FRAMES HAVE PASSED THE MAP";
+		//mState->currentState = new (Export);
+		//mState->currentState = new (Idle);
+		transitionTo(new Export);
+	}
+	else if (tStart > tNew)
+	{
+		transitionTo(new Waiting);
+	}
+	else 
+	{
+		transitionTo(new Export);
+	}
+
 }
 
 void MultimediaQueue::transitionTo(State* state)
 {
-	/*if (state_ != nullptr)
-		delete state_;*/
-	state_ = state;
-	state_->set_multimediaQueue(this); 
-}
-
-void MultimediaQueue::requestStart(int64_t ts)
-{
-	//state_ = (new Idle());
-	state_->startExport(ts);
-}
-
-void MultimediaQueue::requestStop(int64_t te)
-{
-	state_->stopExport(te);
+	mState->currentState = state;
 }
 
 bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
@@ -177,33 +220,70 @@ bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 	{
 		MultimediaQueueCommand cmd;
 		getCommand(cmd, frame);
-		MultimediaQueue* multiQueObj = new MultimediaQueue(new Idle, mProps);
+		getState(cmd.startTime, cmd.endTime);
+		mState->startTime = cmd.startTime;
+		mState->endTime = cmd.endTime;
+		//auto statePass = new Idle();
+	/*	MultimediaQueue* multiQueObj = new MultimediaQueue(mProps);
 		multiQueObj->requestStart(cmd.startTime);
-		multiQueObj->requestStop(cmd.endTime);
+		multiQueObj->requestStop(cmd.endTime);*/
+
 		return true;
 	}
 }
 
-bool MultimediaQueue::allowFrames(int64_t Ts, int64_t Te)
+int64_t getTimeStamp(const std::string& timeString)
 {
+	std::istringstream m_istream{ timeString };
+	std::tm m_tm{ 0 };
+	std::time_t m_timet{ 0 };
+	m_istream >> std::get_time(&m_tm, timeFormat.c_str());
+	m_timet = std::mktime(&m_tm);
+	m_timet *= 1000; // convert to milliseconds
+	return m_timet;
+}
+
+bool MultimediaQueue::allowFrames(const std::string &ts, const std::string &te)
+{
+	int64_t timeStart = getTimeStamp(ts);
+	int64_t timeStop = getTimeStamp(te);
 	MultimediaQueueCommand cmd;
-	cmd.startTime = Ts;
-	cmd.endTime = Te;
+	cmd.startTime = timeStart;
+	cmd.endTime = timeStop;
 	return queueCommand(cmd);
 }
 
 bool MultimediaQueue::process(frame_container& frames)
 {
-
-	mDetail->queue(frames);
-
+	
+	mState->queueObject->queue(frames);
 	frame_container outFrames;
-	mDetail->get(outFrames);
+	bool reset = false;
+	std::vector<frame_container> frameVector;
 	
+	//getState
+	State::StateType idleState = State::StateType::Idle;
+
+	if (mState->currentState->Type == idleState)
+	{
+		mState->queueObject->get(outFrames);
 		send(outFrames);
-		outFrames.clear();
-	
-	// LOG_ERROR << "Sending frames from multimedia queue";
+	}
+	else
+	{
+		mState->currentState->handleExport(mState->startTime, mState->endTime, frameVector,reset,mState->queueObject->mQueue);
+		for (frame_container& element : frameVector)
+		{
+			send(element);
+		}
+	}
+
+	if (reset == true)
+	{
+		mState->startTime = 0;
+		mState->endTime = 0;
+		getState(mState->startTime, mState->endTime);
+	}
 	return true;
 }
 

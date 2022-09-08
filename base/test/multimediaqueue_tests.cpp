@@ -49,7 +49,7 @@ BOOST_AUTO_TEST_CASE(basic)
 {
     std::string inFolderPath = "./data/Raw_YUV420_640x360";
     auto fileReaderProps = FileReaderModuleProps(inFolderPath, 0, -1, 4 * 1024 * 1024);
-    fileReaderProps.fps = 24;
+    fileReaderProps.fps = 1;
     fileReaderProps.readLoop = true;
     auto fileReader = boost::shared_ptr<Module>(new FileReaderModule(fileReaderProps));
     auto metadata = framemetadata_sp(new RawImageMetadata(640, 360, ImageMetadata::ImageType::RGB, CV_8UC3, 0, CV_8U, FrameMetadata::HOST, true));
@@ -65,19 +65,20 @@ BOOST_AUTO_TEST_CASE(basic)
 	BOOST_TEST(multiQueue->init());
     BOOST_TEST(sink->init());
     auto sinkQueue = sink->getQue();
-    for (int i = 0; i < 21; i++)
+    for (int i = 0; i < 10; i++)
     {
         fileReader->step();
         multiQueue->step();
-        if (i == 19)
-        {
-            auto pop = sinkQueue->pop();
-        }
     }
-    multiQueue->allowFrames(12, 50);
+    multiQueue->allowFrames("20220907 11:46:30", "20220907 11:46:45");
     multiQueue->step();
+ 
     //auto popFrames = sink->
-   
+    for (int i = 0; i < 5; i++)
+    {
+        fileReader->step();
+        multiQueue->step();
+    }
     BOOST_TEST(sinkQueue->size()==1);
 }
 

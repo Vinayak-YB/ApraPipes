@@ -2,71 +2,34 @@
 
 #include "Module.h"
 
+
 class MultimediaQueue;
 class MultimediaQueueProps : public ModuleProps
 {
 public:
-	enum Strategy {
-		JPEG,
-		GOF,
-		TimeStampStrategy
-	};
-public:
 	MultimediaQueueProps() : ModuleProps()
 	{
-		maxQueueLength = 10000;
-		strategy = JPEG;
-		fIndexStrategyType = FIndexStrategy::FIndexStrategyType::NONE;
+		maxQueueLength = 240000;
 	}
 	
 	int maxQueueLength; // Length of multimedia queue
-	Strategy strategy;
 };
 
-class DetailAbs;
-
-class State {
-
-protected:
-	
-
-public:
-	MultimediaQueue* multimediaQueue_;
-
-	virtual ~State() {}
-
-	void set_multimediaQueue(MultimediaQueue* multimediaQueue)
-	{
-		multimediaQueue_ = multimediaQueue;
-	}
-
-	boost::shared_ptr<DetailAbs> mDetail;
-	virtual void startExport(int64_t ts) = 0;
-	virtual void stopExport(int64_t te) = 0;
-
-};
-
-
+class State;
 
 class MultimediaQueue : public Module {
 public:
 	MultimediaQueue(MultimediaQueueProps _props = MultimediaQueueProps());
 
-	MultimediaQueue(State* state, MultimediaQueueProps _props = MultimediaQueueProps()) : Module(TRANSFORM, "MultimediaQueue",_props)
-	{
-		transitionTo(state);
-	}
 	virtual ~MultimediaQueue() {
-		//delete state_;
 	}
 
 	bool init();
 	bool term();
+	void getState(int64_t Ts, int64_t Te);
 	void transitionTo(State* state);
-	void requestStart(int64_t Ts);
-	void requestStop(int64_t Te);
 	bool handleCommand(Command::CommandType type, frame_sp &frame);
-	bool allowFrames(int64_t Ts, int64_t Te);
+	bool allowFrames(const std::string &Ts, const std::string &Te);
 
 protected:
 	bool process(frame_container& frames);
@@ -75,8 +38,35 @@ protected:
 	bool validateInputOutputPins();
 	//void addInputPin(framemetadata_sp& metadata, string& pinId);
 
-private:
-	boost::shared_ptr<DetailAbs> mDetail;
-	State *state_ ;
+public:
+	boost::shared_ptr<State> mState;
 	MultimediaQueueProps mProps;
+};
+
+class queueClass;
+
+class State {
+public:
+	boost::shared_ptr<queueClass> queueObject;
+	State() {}
+	State(MultimediaQueueProps& _props) {}
+	virtual ~State() {}
+	typedef std::map<int64_t, frame_container> mQueueMap;
+	virtual bool handleExport(int64_t ts, int64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& mQueue) { return true; }
+	State* currentState;
+	int64_t startTime = 0;
+	int64_t endTime = 0;
+	
+	enum StateType 
+	{
+		Idle,
+		Waiting,
+		Export
+	};
+
+	State(StateType type_)
+	{
+		Type = type_;
+	}
+	StateType Type = StateType::Idle;
 };
