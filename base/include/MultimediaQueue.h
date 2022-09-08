@@ -9,7 +9,7 @@ class MultimediaQueueProps : public ModuleProps
 public:
 	MultimediaQueueProps() : ModuleProps()
 	{
-		maxQueueLength = 240000;
+		maxQueueLength = 1000;
 	}
 	
 	int maxQueueLength; // Length of multimedia queue
@@ -26,10 +26,11 @@ public:
 
 	bool init();
 	bool term();
-	void getState(int64_t Ts, int64_t Te);
+	void getState(uint64_t Ts, uint64_t Te);
 	void transitionTo(State* state);
 	bool handleCommand(Command::CommandType type, frame_sp &frame);
-	bool allowFrames(const std::string &Ts, const std::string &Te);
+	bool allowFrames(uint64_t&Ts, uint64_t &Te);
+	bool setNext(boost::shared_ptr<Module> next, bool open = true, bool sieve = false);
 
 protected:
 	bool process(frame_container& frames);
@@ -43,30 +44,30 @@ public:
 	MultimediaQueueProps mProps;
 };
 
-class queueClass;
+class QueueClass;
 
 class State {
 public:
-	boost::shared_ptr<queueClass> queueObject;
+	boost::shared_ptr<QueueClass> queueObject;
 	State() {}
 	State(MultimediaQueueProps& _props) {}
 	virtual ~State() {}
-	typedef std::map<int64_t, frame_container> mQueueMap;
-	virtual bool handleExport(int64_t ts, int64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& mQueue) { return true; }
+	typedef std::map<uint64_t, frame_container> mQueueMap;
+	virtual bool handleExport(uint64_t ts, uint64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& mQueue) { return true; }
 	State* currentState;
-	int64_t startTime = 0;
-	int64_t endTime = 0;
+	uint64_t startTime = 0;
+	uint64_t endTime = 0;
 	
 	enum StateType 
 	{
-		Idle,
-		Waiting,
-		Export
+		IDLE,
+		WAITING,
+		EXPORT
 	};
 
 	State(StateType type_)
 	{
 		Type = type_;
 	}
-	StateType Type = StateType::Idle;
+	StateType Type = StateType::IDLE;
 };

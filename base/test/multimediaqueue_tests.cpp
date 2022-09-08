@@ -12,6 +12,9 @@
 #include <ExternalSinkModule.h>
 #include<Module.h>
 #include "FrameContainerQueue.h"
+#include <time.h>
+#include <chrono>
+
 
 BOOST_AUTO_TEST_SUITE(multimediaqueue_tests)
 
@@ -56,24 +59,26 @@ BOOST_AUTO_TEST_CASE(basic)
     auto pinId  =  fileReader->addOutputPin(metadata);
 
 	auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps()));
-    fileReader->setNext(multiQueue, true, false);
+    fileReader->setNext(multiQueue);
     auto sink = boost::shared_ptr<SinkModule>(new SinkModule(SinkModuleProps()));
-    multiQueue->addOutputPin(metadata);
-    multiQueue->setNext(sink, true, false);
+
+    multiQueue->setNext(sink);
 
 	BOOST_TEST(fileReader->init());
 	BOOST_TEST(multiQueue->init());
     BOOST_TEST(sink->init());
     auto sinkQueue = sink->getQue();
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 20; i++)
     {
         fileReader->step();
         multiQueue->step();
     }
-    multiQueue->allowFrames("20220907 11:46:30", "20220907 11:46:45");
+    unsigned __int64 now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    uint64_t startTime = now - 5000;
+    uint64_t endTime = now;
+    multiQueue->allowFrames(startTime, endTime);
     multiQueue->step();
  
-    //auto popFrames = sink->
     for (int i = 0; i < 5; i++)
     {
         fileReader->step();

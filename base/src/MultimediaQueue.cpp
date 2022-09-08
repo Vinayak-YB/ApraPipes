@@ -13,18 +13,18 @@
 
 const std::string timeFormat{ "%Y%m%d %H:%M:%S" };
 
-class queueClass 
+class QueueClass 
 {
 
 public:
-	queueClass(MultimediaQueueProps& _props) {}
+	QueueClass(MultimediaQueueProps& _props) {}
 	
-	~queueClass()
+	~QueueClass()
 	{}
 
-	bool queue(frame_container& frames)
+	bool enqueue(frame_container& frames)
 	{
-		int64_t largestTimeStamp = 0;
+		uint64_t largestTimeStamp = 0;
 		for (auto it = frames.cbegin(); it != frames.cend(); it++)
 		{
 			mQueue.insert({ it->second->timestamp, frames });
@@ -44,52 +44,35 @@ public:
 
 	bool get(frame_container& frames)
 	{
-		frames[queueClass::getMultimediaQueuePinId(mQueue.begin()->second.begin()->first)] = mQueue.begin()->second.begin()->second;
+		frames[QueueClass::getMultimediaQueuePinId(mQueue.begin()->second.begin()->first)] = mQueue.begin()->second.begin()->second;
 		return true;
 	}
-	void startExport(int64_t ts) {};
-	void stopExport(int64_t te) {};
-	typedef std::map<int64_t, frame_container> MultimediaQueueMap;
+	void startExport(uint64_t ts) {};
+	void stopExport(uint64_t te) {};
+	typedef std::map<uint64_t, frame_container> MultimediaQueueMap;
 	MultimediaQueueMap mQueue;
-
 protected:
 
-	double maxQueueLength = 100000;
+	double maxQueueLength = 10000;
 	int maxDelay;
 protected:
 	std::string getMultimediaQueuePinId(const std::string& pinId)
 	{
 		return pinId ;
 	}
-private:
-	//MultimediaQueueProps mProps;
+
 };
 
-class Waiting : public State {
-public:
-	Waiting() : State(State::StateType::Waiting) {}
-	bool handleExport(int64_t ts, int64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& queueMap) override
-	{
-		//auto queueMap = queueObject->mQueue;
-		auto tOld = queueMap.begin()->first;
-		auto Temp = queueMap.end();
-		Temp--;
-		auto tNew = Temp->first;
-		//The code will change here
-		//auto queueMap = queueObject->mQueue;
-		frames.push_back(queueMap.begin()->second);
-		return true;
-	}
-};
+//Strategy begins here
 
 class Export : public State {
 public:
-	Export() : State(StateType::Export) {}
+	Export() : State(StateType::EXPORT) {}
 	Export(mQueueMap mQueue)
 	{
 	}
 
-	bool handleExport(int64_t ts, int64_t te, std::vector<frame_container>& frames, bool & timeReset, mQueueMap& queueMap) override
+	bool handleExport(uint64_t ts, uint64_t te, std::vector<frame_container>& frames, bool & timeReset, mQueueMap& queueMap) override
 	{
 		//auto queueMap = queueObject->mQueue;
 		auto tOld = queueMap.begin()->first;
@@ -97,7 +80,7 @@ public:
 		Temp--;
 		auto tNew = Temp->first;
 
-		if ((ts < tOld) && (queueMap.upper_bound(te)!=queueMap.end()))
+		if ((ts < tOld) && (queueMap.upper_bound(te)==queueMap.end()))
 		{
 			//To Do : Add the case where the frame container stop coming
 			//Current assumption is that frame containers are coming at all time 
@@ -105,14 +88,18 @@ public:
 			{
 				frames.push_back(it->second);
 			}
-	
+			timeReset = true;
 			return true;
 		}
-		else if ((te > tNew) && (queueMap.upper_bound(ts) != queueMap.end()))
+		else if ((te > tNew) && (queueMap.upper_bound(ts) == queueMap.end()))
 		{
 			for (auto it = queueMap.upper_bound(ts); it != queueMap.end(); it++)
 			{
 				frames.push_back(it->second);
+			}
+			if (tNew >= te)
+			{
+				timeReset = true;
 			}
 			return true;
 		}
@@ -122,21 +109,39 @@ public:
 			{
 				frames.push_back(it->second);
 			}
+			timeReset = true;
 			return true;
 		}
 	}
 };
-//Strategy begins here
 
-
+class Waiting : public State {
+public:
+	Waiting() : State(State::StateType::WAITING) {}
+	bool handleExport(uint64_t ts, uint64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& queueMap) override
+	{
+		auto tOld = queueMap.begin()->first;
+		auto Temp = queueMap.end();
+		Temp--;
+		auto tNew = Temp->first;
+		//The code will change here
+		//The state will be waiting until we find ts in map, once found state will go to export
+		if (tNew >= ts)
+		{
+			currentState = new (Export);
+		}
+		LOG_ERROR << "THE FRAMES ARE IN FUTURE!! WE ARE WAITING FOR THEM..";
+		return true;
+	}
+};
 
 class Idle : public State {
 public:
-	Idle() : State(StateType::Idle) {}
-	bool handleExport(int64_t ts, int64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& queueMap) override
+	Idle() : State(StateType::IDLE) {}
+	bool handleExport(uint64_t ts, uint64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& queueMap) override
 	{
-		//The code will change here
-		//auto queueMap = queueObject->mQueue;
+		//The code will not come here
+
 		frames.push_back(queueMap.begin()->second);
 		return true;
 	}
@@ -145,7 +150,7 @@ public:
 MultimediaQueue::MultimediaQueue(MultimediaQueueProps _props) :Module(TRANSFORM, "MultimediaQueue", _props),mProps(_props)
 {
 	mState.reset(new State(_props));
-	mState->queueObject.reset(new queueClass(_props));
+	mState->queueObject.reset(new QueueClass(_props));
 }
 
 bool MultimediaQueue::validateInputPins()
@@ -163,6 +168,10 @@ bool MultimediaQueue::validateInputOutputPins()
 	return Module::validateInputOutputPins();
 }
 
+bool MultimediaQueue::setNext(boost::shared_ptr<Module> next, bool open, bool sieve)
+{
+	return Module::setNext(next, open, false, sieve);
+}
 bool MultimediaQueue::init()
 {
 	if (!Module::init())
@@ -181,7 +190,7 @@ bool MultimediaQueue::term()
 	return Module::term();
 }
 
-void MultimediaQueue::getState(int64_t tStart, int64_t tStop)
+void MultimediaQueue::getState(uint64_t tStart, uint64_t tStop)
 {
 	auto queueMap = mState->queueObject->mQueue;
 	auto tOld = queueMap.begin()->first;
@@ -189,14 +198,12 @@ void MultimediaQueue::getState(int64_t tStart, int64_t tStop)
 	Temp--;
 	auto tNew = Temp->first;
 
-	//Check conditions and determine the new state to transition to.
+	//Checking conditions to determine the new state to transition to.
 	
 	if (tStop < tOld)
 	{
 		LOG_ERROR << "THE FRAMES HAVE PASSED THE MAP";
-		//mState->currentState = new (Export);
-		//mState->currentState = new (Idle);
-		transitionTo(new Export);
+		transitionTo(new Idle);
 	}
 	else if (tStart > tNew)
 	{
@@ -223,51 +230,37 @@ bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 		getState(cmd.startTime, cmd.endTime);
 		mState->startTime = cmd.startTime;
 		mState->endTime = cmd.endTime;
-		//auto statePass = new Idle();
-	/*	MultimediaQueue* multiQueObj = new MultimediaQueue(mProps);
-		multiQueObj->requestStart(cmd.startTime);
-		multiQueObj->requestStop(cmd.endTime);*/
 
 		return true;
 	}
 }
 
-int64_t getTimeStamp(const std::string& timeString)
+bool MultimediaQueue::allowFrames(uint64_t &ts, uint64_t&te)
 {
-	std::istringstream m_istream{ timeString };
-	std::tm m_tm{ 0 };
-	std::time_t m_timet{ 0 };
-	m_istream >> std::get_time(&m_tm, timeFormat.c_str());
-	m_timet = std::mktime(&m_tm);
-	m_timet *= 1000; // convert to milliseconds
-	return m_timet;
-}
-
-bool MultimediaQueue::allowFrames(const std::string &ts, const std::string &te)
-{
-	int64_t timeStart = getTimeStamp(ts);
-	int64_t timeStop = getTimeStamp(te);
-	MultimediaQueueCommand cmd;
-	cmd.startTime = timeStart;
-	cmd.endTime = timeStop;
-	return queueCommand(cmd);
+	if (mState->currentState->Type != mState->EXPORT)
+	{
+		MultimediaQueueCommand cmd;
+		cmd.startTime = ts;
+		cmd.endTime = te;
+		return queueCommand(cmd);
+	};
+	return true;
 }
 
 bool MultimediaQueue::process(frame_container& frames)
 {
 	
-	mState->queueObject->queue(frames);
+	mState->queueObject->enqueue(frames);
 	frame_container outFrames;
 	bool reset = false;
 	std::vector<frame_container> frameVector;
 	
 	//getState
-	State::StateType idleState = State::StateType::Idle;
+	
 
-	if (mState->currentState->Type == idleState)
+	if (mState->currentState->Type == mState->Type)
 	{
-		mState->queueObject->get(outFrames);
-		send(outFrames);
+		return true;
 	}
 	else
 	{
@@ -276,9 +269,17 @@ bool MultimediaQueue::process(frame_container& frames)
 		{
 			send(element);
 		}
+		if (frameVector.size())
+		{
+			auto it = frameVector.size();
+			auto lastFrameContainer = frameVector[it - 1];
+			auto frame = lastFrameContainer.begin();
+			auto Ts = frame->second->timestamp;
+			mState->startTime = Ts;
+		}
 	}
 
-	if (reset == true)
+	if (reset)
 	{
 		mState->startTime = 0;
 		mState->endTime = 0;
