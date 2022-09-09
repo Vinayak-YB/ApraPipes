@@ -53,7 +53,7 @@ public:
 	State(MultimediaQueueProps& _props) {}
 	virtual ~State() {}
 	typedef std::map<uint64_t, frame_container> mQueueMap;
-	virtual bool handleExport(uint64_t ts, uint64_t te, std::vector<frame_container>& frames, bool& timeReset, mQueueMap& mQueue) { return true; }
+	virtual bool handleExport(uint64_t &ts, uint64_t &te, bool& timeReset, mQueueMap& mQueue) { return true; }
 	State* currentState;
 	uint64_t startTime = 0;
 	uint64_t endTime = 0;
