@@ -9,10 +9,10 @@ class MultimediaQueueProps : public ModuleProps
 public:
 	MultimediaQueueProps() : ModuleProps()
 	{
-		maxQueueLength = 1000;
+		lowerWaterMark = 10000;
 	}
 	
-	int maxQueueLength; // Length of multimedia queue in terms of time
+	int lowerWaterMark; // Length of multimedia queue in terms of time
 	int maxFrameLength;
 };
 

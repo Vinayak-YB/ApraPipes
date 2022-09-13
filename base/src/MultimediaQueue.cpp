@@ -1,16 +1,9 @@
 #include <boost/foreach.hpp>
 #include <map>
-#include "FramesMuxer.h"
 #include "Frame.h"
 #include "MultimediaQueue.h"
 #include "Logger.h"
-#include "AIPExceptions.h"
 #include "stdafx.h"
-#include <string>
-#include <chrono>
-#include <sstream>
-#include <iomanip>
-#include "BoundBuffer.h"
 
 class QueueClass 
 {
@@ -33,13 +26,28 @@ public:
 			}
 		}
 
-		if ((largestTimeStamp - mQueue.begin()->first > maxQueueLength) && (pushNext == true))
+		if ((largestTimeStamp - mQueue.begin()->first > lowerWaterMark) && (pushNext == true))
 		{
 			mQueue.erase(mQueue.begin()->first);
 		}
+
 		else if ((largestTimeStamp - mQueue.begin()->first > upperWaterMark) && (pushNext == false))
 		{
-			mQueue.erase(mQueue.begin()->first);
+			auto it = mQueue.begin();
+			auto actuallast = mQueue.end();
+			actuallast--;
+			auto lastTS = actuallast->first;
+			while( it != mQueue.end())
+			{
+				if ((lastTS - it->first) < lowerWaterMark)
+				{
+					break;
+				}
+				auto itr = it;
+				++it;
+				mQueue.erase(itr->first);
+			}
+			pushNext = true;
 		};
 
 		return true;
@@ -56,9 +64,10 @@ public:
 	MultimediaQueueMap mQueue;
 protected:
 
-	double maxQueueLength = 10000;
+	double lowerWaterMark = 10000;
 	double upperWaterMark = 15000;
 	int maxDelay;
+
 protected:
 	std::string getMultimediaQueuePinId(const std::string& pinId)
 	{
@@ -211,6 +220,7 @@ void MultimediaQueue::getState(uint64_t tStart, uint64_t tStop)
 
 }
 
+
 bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 {
 	if (type == Command::CommandType::MultimediaQueue)
@@ -231,7 +241,7 @@ bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 			{
 				if (((it->first) >= mState->startTime) && (((it->first) <= mState->endTime)))
 				{
-					if (isFull())
+					if (isNextModuleQueFull())
 					{
 						pushNext = false;
 					}
@@ -301,7 +311,7 @@ bool MultimediaQueue::process(frame_container& frames)
 		{
 			if (((it->first) >= (mState->startTime + 1)) && (((it->first) <= (endTimeSaved))))
 			{
-				if (isFull())
+				if (isNextModuleQueFull())
 				{
 					pushNext = false;
 				}
