@@ -12,7 +12,8 @@ public:
 		maxQueueLength = 1000;
 	}
 	
-	int maxQueueLength; // Length of multimedia queue
+	int maxQueueLength; // Length of multimedia queue in terms of time
+	int maxFrameLength;
 };
 
 class State;
@@ -27,7 +28,6 @@ public:
 	bool init();
 	bool term();
 	void getState(uint64_t Ts, uint64_t Te);
-	void transitionTo(State* state);
 	bool handleCommand(Command::CommandType type, frame_sp &frame);
 	bool allowFrames(uint64_t&Ts, uint64_t &Te);
 	bool setNext(boost::shared_ptr<Module> next, bool open = true, bool sieve = false);
@@ -37,8 +37,12 @@ protected:
 	bool validateInputPins();
 	bool validateOutputPins();
 	bool validateInputOutputPins();
-	//void addInputPin(framemetadata_sp& metadata, string& pinId);
 
+private:
+	bool pushNext = true;
+	bool reset = false;
+	uint64_t startTimeSaved = 0;
+	uint64_t endTimeSaved = 0;
 public:
 	boost::shared_ptr<State> mState ;
 	MultimediaQueueProps mProps;
@@ -56,6 +60,8 @@ public:
 	virtual bool handleExport(uint64_t &ts, uint64_t &te, bool& timeReset, mQueueMap& mQueue) { return true; }
 	uint64_t startTime = 0;
 	uint64_t endTime = 0;
+	/*uint64_t startTimeSaved = 0;
+	uint64_t endTimeSaved = 0;*/
 	
 	enum StateType 
 	{

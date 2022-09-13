@@ -10,8 +10,7 @@
 #include <chrono>
 #include <sstream>
 #include <iomanip>
-
-const std::string timeFormat{ "%Y%m%d %H:%M:%S" };
+#include "BoundBuffer.h"
 
 class QueueClass 
 {
@@ -21,8 +20,8 @@ public:
 	
 	~QueueClass()
 	{}
-
-	bool enqueue(frame_container& frames)
+	
+	bool enqueue(frame_container& frames, bool  pushNext)
 	{
 		uint64_t largestTimeStamp = 0;
 		for (auto it = frames.cbegin(); it != frames.cend(); it++)
@@ -34,10 +33,14 @@ public:
 			}
 		}
 
-		if (largestTimeStamp - mQueue.begin()->first > maxQueueLength)
+		if ((largestTimeStamp - mQueue.begin()->first > maxQueueLength) && (pushNext == true))
 		{
 			mQueue.erase(mQueue.begin()->first);
 		}
+		else if ((largestTimeStamp - mQueue.begin()->first > upperWaterMark) && (pushNext == false))
+		{
+			mQueue.erase(mQueue.begin()->first);
+		};
 
 		return true;
 	}
@@ -54,6 +57,7 @@ public:
 protected:
 
 	double maxQueueLength = 10000;
+	double upperWaterMark = 15000;
 	int maxDelay;
 protected:
 	std::string getMultimediaQueuePinId(const std::string& pinId)
@@ -63,7 +67,7 @@ protected:
 
 };
 
-//Strategy begins here
+//State Design begins here
 
 class Export : public State {
 public:
@@ -79,27 +83,25 @@ public:
 
 	bool handleExport(uint64_t &ts, uint64_t &te,bool & timeReset, mQueueMap& queueMap) override
 	{
-		//auto queueMap = queueObject->mQueue;
 		auto tOld = queueMap.begin()->first;
 		auto Temp = queueMap.end();
 		Temp--;
 		auto tNew = Temp->first;
-
-		if ((ts < tOld) && (queueMap.upper_bound(te)==queueMap.end()))
+		te = te - 1;
+		if ((ts < tOld) && (queueMap.upper_bound(te)!=queueMap.end()))
 		{
-			//To Do : Add the case where the frame container stop coming
-			//Current assumption is that frame containers are coming at all time 
 			ts = tOld;
 			timeReset = true;
 			return true;
 		}
-		else if ((te > tNew) && (queueMap.upper_bound(ts) == queueMap.end()))
+		else if ((te > tNew) && (queueMap.upper_bound(ts) != queueMap.end()))
 		{
-			te = tNew;
 			if (tNew >= te)
 			{
 				timeReset = true;
 			}
+			te = tNew;
+
 			return true;
 		}
 		else
@@ -120,16 +122,6 @@ public:
 	}
 	bool handleExport(uint64_t &ts, uint64_t &te,bool& timeReset, mQueueMap& queueMap) override
 	{
-		//auto tOld = queueMap.begin()->first;
-		//auto Temp = queueMap.end();
-		//Temp--;
-		//auto tNew = Temp->first;
-		//////The code will change here
-		//////The state will be waiting until we find ts in map, once found state will go to export
-		//if (tNew >= ts)
-		//{
-		//	//queueObject.reset(new Export(startTime,endTime,queueObject));
-		//}
 		BOOST_LOG_TRIVIAL (info) << "THE FRAMES ARE IN FUTURE!! WE ARE WAITING FOR THEM..";
 		return true;
 	}
@@ -146,7 +138,6 @@ public:
 	bool handleExport(uint64_t &ts, uint64_t &te,bool& timeReset, mQueueMap& queueMap) override
 	{
 		//The code will not come here
-
 		return true;
 	}
 };
@@ -198,15 +189,15 @@ void MultimediaQueue::getState(uint64_t tStart, uint64_t tStop)
 {
 	auto queueMap = mState->queueObject->mQueue;
 	auto tOld = queueMap.begin()->first;
-	auto Temp = queueMap.end();
-	Temp--;
-	auto tNew = Temp->first;
+	auto tempIT = queueMap.end();
+	tempIT--;
+	auto tNew = tempIT->first;
 
-	//Checking conditions to determine the new state to transition to.
+	//Checking conditions to determine the new state and transitions to it.
 	
 	if (tStop < tOld)
 	{
-		BOOST_LOG_TRIVIAL(info) << "THE FRAMES HAVE PASSED THE MAP";
+		BOOST_LOG_TRIVIAL(info) << "IDLE STATE : MAYBE THE FRAMES HAVE PASSED THE QUEUE";
 		mState.reset(new Idle(mState->startTime, mState->endTime, mState->queueObject));
 	}
 	else if (tStart > tNew)
@@ -220,11 +211,6 @@ void MultimediaQueue::getState(uint64_t tStart, uint64_t tStop)
 
 }
 
-//void MultimediaQueue::transitionTo(State* state)
-//{
-//	//mState.reset(new(state));
-//}
-
 bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 {
 	if (type == Command::CommandType::MultimediaQueue)
@@ -233,8 +219,11 @@ bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 		getCommand(cmd, frame);
 		getState(cmd.startTime, cmd.endTime);
 		mState->startTime = cmd.startTime;
+		startTimeSaved = cmd.startTime;
 		mState->endTime = cmd.endTime;
+		endTimeSaved = cmd.endTime;
 		bool reset = false;
+		bool pushNext = true;
 		if(mState->Type != mState->IDLE)
 		{
 			mState->handleExport(mState->startTime, mState->endTime, reset, mState->queueObject->mQueue);
@@ -242,9 +231,29 @@ bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 			{
 				if (((it->first) >= mState->startTime) && (((it->first) <= mState->endTime)))
 				{
-					send(it->second);
+					if (isFull())
+					{
+						pushNext = false;
+					}
+					else
+					{
+						send(it->second);
+					}
 				}
 			}
+		}
+		if (mState->Type == mState->EXPORT)
+		{
+			auto queueMap = mState->queueObject->mQueue;
+			auto tOld = queueMap.begin()->first;
+			auto tempIT = queueMap.end();
+			tempIT--;
+			auto tNew = tempIT->first;
+			if (mState->endTime > tNew)
+			{
+				reset = false;
+			}
+			mState->startTime = tNew;
 		}
 		if (reset)
 		{
@@ -270,20 +279,51 @@ bool MultimediaQueue::allowFrames(uint64_t &ts, uint64_t&te)
 
 bool MultimediaQueue::process(frame_container& frames)
 {
-	//getState(mState->startTime, mState->endTime);
-	frame_container outFrames;
-	bool reset = false;
+	mState->queueObject->enqueue(frames, pushNext);
+	if (mState->Type == mState->EXPORT)
+	{
+		auto queueMap = mState->queueObject->mQueue;
+		auto tempIT = queueMap.end();
+		tempIT--;
+		auto tNew = tempIT->first;
+		mState->endTime = tNew;
+	}
+
+	if (mState->Type == mState->WAITING)
+	{
+		getState(mState->startTime, mState->endTime);
+	}
 
 	if (mState->Type != mState->IDLE)
 	{
 		mState->handleExport(mState->startTime, mState->endTime,reset,mState->queueObject->mQueue);
 		for (auto it = mState->queueObject->mQueue.begin(); it != mState->queueObject->mQueue.end(); it++)
 		{
-			if (((it->first) >= mState->startTime) && (((it->first) <= mState->endTime)))
+			if (((it->first) >= (mState->startTime + 1)) && (((it->first) <= (endTimeSaved))))
 			{
-				send(it->second);
+				if (isFull())
+				{
+					pushNext = false;
+				}
+				else
+				{
+					send(it->second);
+				}
 			}
 		}
+	}
+	if (mState->Type == mState->EXPORT)
+	{
+		auto queueMap = mState->queueObject->mQueue;
+		auto tOld = queueMap.begin()->first;
+		auto tempIT = queueMap.end();
+		tempIT--;
+		auto tNew = tempIT->first;
+		if (mState->endTime > tNew);
+		{
+			reset = false;
+		}
+		mState->startTime = tNew;
 	}
 
 	if (reset)
@@ -292,13 +332,6 @@ bool MultimediaQueue::process(frame_container& frames)
 		mState->endTime = 0;
 		getState(mState->startTime, mState->endTime);
 	}
-
-	if (mState->Type == mState->WAITING)
-	{
-		getState(mState->startTime, mState->endTime);
-	}
-
-	mState->queueObject->enqueue(frames);
 	return true;
 }
 
