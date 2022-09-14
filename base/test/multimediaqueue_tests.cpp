@@ -45,6 +45,8 @@ protected:
     }
 };
 
+//The multimedia queue takes two arguements queue length (time or no of frames) and bool isDelayInTime. If the bool is true then the length is taken in time else in frames.
+
 BOOST_AUTO_TEST_CASE(export_state)
 {
     //In this case both the timestamps (query startTime and query endTime) are in the queue and we pass all the frames requested.
@@ -56,7 +58,7 @@ BOOST_AUTO_TEST_CASE(export_state)
     auto metadata = framemetadata_sp(new RawImageMetadata(640, 360, ImageMetadata::ImageType::RGB, CV_8UC3, 0, CV_8U, FrameMetadata::HOST, true));
     auto pinId  =  fileReader->addOutputPin(metadata);
 
-	auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps()));
+	auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps(10, false)));
     fileReader->setNext(multiQueue);
     auto sink = boost::shared_ptr<SinkModule>(new SinkModule(SinkModuleProps()));
 
@@ -99,7 +101,7 @@ BOOST_AUTO_TEST_CASE(idle_state)
     auto metadata = framemetadata_sp(new RawImageMetadata(640, 360, ImageMetadata::ImageType::RGB, CV_8UC3, 0, CV_8U, FrameMetadata::HOST, true));
     auto pinId = fileReader->addOutputPin(metadata);
 
-    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps()));
+    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps(10000, true)));
     fileReader->setNext(multiQueue);
     auto sink = boost::shared_ptr<SinkModule>(new SinkModule(SinkModuleProps()));
 
@@ -141,7 +143,7 @@ BOOST_AUTO_TEST_CASE(wait_state)
     auto metadata = framemetadata_sp(new RawImageMetadata(640, 360, ImageMetadata::ImageType::RGB, CV_8UC3, 0, CV_8U, FrameMetadata::HOST, true));
     auto pinId = fileReader->addOutputPin(metadata);
 
-    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps()));
+    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps(10000, true)));
     fileReader->setNext(multiQueue);
     auto sink = boost::shared_ptr<SinkModule>(new SinkModule(SinkModuleProps()));
 
@@ -183,7 +185,7 @@ BOOST_AUTO_TEST_CASE(wait_to_export_state)
     auto metadata = framemetadata_sp(new RawImageMetadata(640, 360, ImageMetadata::ImageType::RGB, CV_8UC3, 0, CV_8U, FrameMetadata::HOST, true));
     auto pinId = fileReader->addOutputPin(metadata);
 
-    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps()));
+    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps(10000, true)));
     fileReader->setNext(multiQueue);
     auto sink = boost::shared_ptr<SinkModule>(new SinkModule(SinkModuleProps()));
 
@@ -225,7 +227,7 @@ BOOST_AUTO_TEST_CASE(future_export)
     auto metadata = framemetadata_sp(new RawImageMetadata(640, 360, ImageMetadata::ImageType::RGB, CV_8UC3, 0, CV_8U, FrameMetadata::HOST, true));
     auto pinId = fileReader->addOutputPin(metadata);
 
-    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps()));
+    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps(10000, true)));
     fileReader->setNext(multiQueue);
     auto sink = boost::shared_ptr<SinkModule>(new SinkModule(SinkModuleProps()));
 
@@ -267,7 +269,7 @@ BOOST_AUTO_TEST_CASE(nextQueue_full)
     auto metadata = framemetadata_sp(new RawImageMetadata(640, 360, ImageMetadata::ImageType::RGB, CV_8UC3, 0, CV_8U, FrameMetadata::HOST, true));
     auto pinId = fileReader->addOutputPin(metadata);
 
-    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps()));
+    auto multiQueue = boost::shared_ptr<MultimediaQueue>(new MultimediaQueue(MultimediaQueueProps(10, false)));
     fileReader->setNext(multiQueue);
     auto sink = boost::shared_ptr<SinkModule>(new SinkModule(SinkModuleProps()));
 

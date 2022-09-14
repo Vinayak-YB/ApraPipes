@@ -1,3 +1,4 @@
+#include <boost/filesystem.hpp>
 #include <boost/foreach.hpp>
 #include <map>
 #include "Frame.h"
@@ -14,8 +15,8 @@ public:
 	~QueueClass()
 	{}
 	
-	bool enqueue(frame_container& frames, bool  pushNext)
-	{
+	bool enqueue(frame_container& frames,double lowerWaterMark, double upperWaterMark, bool isMapDelayInTime, bool  pushNext)
+	{	//	Here the frame_containers are inserted into the map
 		uint64_t largestTimeStamp = 0;
 		for (auto it = frames.cbegin(); it != frames.cend(); it++)
 		{
@@ -25,55 +26,59 @@ public:
 				largestTimeStamp = it->second->timestamp;
 			}
 		}
-
-		if ((largestTimeStamp - mQueue.begin()->first > lowerWaterMark) && (pushNext == true))
+		if (isMapDelayInTime) // If the lower and upper watermark are given in time
 		{
-			mQueue.erase(mQueue.begin()->first);
-		}
-
-		else if ((largestTimeStamp - mQueue.begin()->first > upperWaterMark) && (pushNext == false))
-		{
-			auto it = mQueue.begin();
-			auto actuallast = mQueue.end();
-			actuallast--;
-			auto lastTS = actuallast->first;
-			while( it != mQueue.end())
+			if ((largestTimeStamp - mQueue.begin()->first > lowerWaterMark) && (pushNext == true))
 			{
-				if ((lastTS - it->first) < lowerWaterMark)
-				{
-					break;
-				}
-				auto itr = it;
-				++it;
-				mQueue.erase(itr->first);
+				mQueue.erase(mQueue.begin()->first);
 			}
-			pushNext = true;
-		};
 
+			else if ((largestTimeStamp - mQueue.begin()->first > upperWaterMark) && (pushNext == false))
+			{
+				auto it = mQueue.begin();
+				auto lastElement = mQueue.end();
+				lastElement--;
+				auto lastElementTimeStamp = lastElement->first;
+				while (it != mQueue.end())
+				{
+					if ((lastElementTimeStamp - it->first) < lowerWaterMark)
+					{
+						break;
+					}
+					auto itr = it;
+					++it;
+					mQueue.erase(itr->first);
+				}
+				pushNext = true;
+			};
+		}
+		else // If the lower and upper water mark are given in number of frames
+		{
+			if (( mQueue.size() > lowerWaterMark) && (pushNext == true))
+			{
+				mQueue.erase(mQueue.begin()->first);
+			}
+
+			else if ((mQueue.size() > upperWaterMark) && (pushNext == false))
+			{
+				auto it = mQueue.begin();
+				while (it != mQueue.end())
+				{
+					if (mQueue.size() < lowerWaterMark)
+					{
+						break;
+					}
+					auto itr = it;
+					++it;
+					mQueue.erase(itr->first);
+				}
+				pushNext = true;
+			};
+		}
 		return true;
 	}
-
-	bool get(frame_container& frames)
-	{
-		frames[QueueClass::getMultimediaQueuePinId(mQueue.begin()->second.begin()->first)] = mQueue.begin()->second.begin()->second;
-		return true;
-	}
-	void startExport(uint64_t ts) {};
-	void stopExport(uint64_t te) {};
 	typedef std::map<uint64_t, frame_container> MultimediaQueueMap;
 	MultimediaQueueMap mQueue;
-protected:
-
-	double lowerWaterMark = 10000;
-	double upperWaterMark = 15000;
-	int maxDelay;
-
-protected:
-	std::string getMultimediaQueuePinId(const std::string& pinId)
-	{
-		return pinId ;
-	}
-
 };
 
 //State Design begins here
@@ -81,35 +86,32 @@ protected:
 class Export : public State {
 public:
 	Export() : State(StateType::EXPORT) {}
-	Export(uint64_t Ts, uint64_t Te, boost::shared_ptr<QueueClass> queueObj) : State(StateType::EXPORT) {
-		startTime = Ts;
-		endTime = Te;
+	Export(uint64_t _startTime, uint64_t _endTime, boost::shared_ptr<QueueClass> queueObj) : State(StateType::EXPORT) {
+		startTime = _startTime;
+		endTime = _endTime;
 		queueObject = queueObj;
 	}
-	Export(mQueueMap mQueue)
-	{
-	}
 
-	bool handleExport(uint64_t &ts, uint64_t &te,bool & timeReset, mQueueMap& queueMap) override
-	{
+	bool handleExport(uint64_t &queryStart, uint64_t &queryEnd,bool & timeReset, mQueueMap& queueMap) override
+	{	
 		auto tOld = queueMap.begin()->first;
-		auto Temp = queueMap.end();
-		Temp--;
-		auto tNew = Temp->first;
-		te = te - 1;
-		if ((ts < tOld) && (queueMap.upper_bound(te)!=queueMap.end()))
+		auto temp = queueMap.end();
+		temp--;
+		auto tNew = temp->first;
+		queryEnd = queryEnd - 1;
+		if ((queryStart < tOld) && (queueMap.upper_bound(queryEnd)!=queueMap.end()))
 		{
-			ts = tOld;
+			queryStart = tOld;
 			timeReset = true;
 			return true;
 		}
-		else if ((te > tNew) && (queueMap.upper_bound(ts) != queueMap.end()))
+		else if ((queryEnd > tNew) && (queueMap.upper_bound(queryStart) != queueMap.end()))
 		{
-			if (tNew >= te)
+			if (tNew >= queryEnd)
 			{
 				timeReset = true;
 			}
-			te = tNew;
+			queryEnd = tNew;
 
 			return true;
 		}
@@ -124,14 +126,14 @@ public:
 class Waiting : public State {
 public:
 	Waiting() : State(State::StateType::WAITING) {}
-	Waiting(uint64_t Ts, uint64_t Te, boost::shared_ptr<QueueClass> queueObj) : State(State::StateType::WAITING) {
-		startTime = Ts;
-		endTime = Te;
+	Waiting(uint64_t _startTime, uint64_t _endTime, boost::shared_ptr<QueueClass> queueObj) : State(State::StateType::WAITING) {
+		startTime = _startTime;
+		endTime = _endTime;
 		queueObject = queueObj;
 	}
-	bool handleExport(uint64_t &ts, uint64_t &te,bool& timeReset, mQueueMap& queueMap) override
+	bool handleExport(uint64_t & queryStart, uint64_t & queryEnd,bool& timeReset, mQueueMap& queueMap) override
 	{
-		BOOST_LOG_TRIVIAL (info) << "THE FRAMES ARE IN FUTURE!! WE ARE WAITING FOR THEM..";
+		BOOST_LOG_TRIVIAL (info) << "WAITING STATE : THE FRAMES ARE IN FUTURE!! WE ARE WAITING FOR THEM..";
 		return true;
 	}
 };
@@ -139,12 +141,12 @@ public:
 class Idle : public State {
 public:
 	Idle() : State(StateType::IDLE) {}
-	Idle(uint64_t Ts, uint64_t Te, boost::shared_ptr<QueueClass> queueObj) : State(StateType::IDLE) {
-		startTime = Ts;
-		endTime = Te;
+	Idle(uint64_t _startTime, uint64_t _endTime, boost::shared_ptr<QueueClass> queueObj) : State(StateType::IDLE) {
+		startTime = _startTime;
+		endTime = _endTime;
 		queueObject = queueObj;
 	}
-	bool handleExport(uint64_t &ts, uint64_t &te,bool& timeReset, mQueueMap& queueMap) override
+	bool handleExport(uint64_t & queryStart, uint64_t & queryEnd,bool& timeReset, mQueueMap& queueMap) override
 	{
 		//The code will not come here
 		return true;
@@ -194,17 +196,23 @@ bool MultimediaQueue::term()
 	return Module::term();
 }
 
-void MultimediaQueue::getState(uint64_t tStart, uint64_t tStop)
+void MultimediaQueue::queueBoundaryTS(uint64_t& tOld, uint64_t& tNew)
 {
 	auto queueMap = mState->queueObject->mQueue;
-	auto tOld = queueMap.begin()->first;
+	tOld = queueMap.begin()->first;
 	auto tempIT = queueMap.end();
 	tempIT--;
-	auto tNew = tempIT->first;
+	tNew = tempIT->first;
+}
+
+void MultimediaQueue::getState(uint64_t tStart, uint64_t tEnd)
+{	
+	uint64_t tOld, tNew = 0;
+	queueBoundaryTS(tOld, tNew);
 
 	//Checking conditions to determine the new state and transitions to it.
 	
-	if (tStop < tOld)
+	if (tEnd < tOld)
 	{
 		BOOST_LOG_TRIVIAL(info) << "IDLE STATE : MAYBE THE FRAMES HAVE PASSED THE QUEUE";
 		mState.reset(new Idle(mState->startTime, mState->endTime, mState->queueObject));
@@ -253,12 +261,9 @@ bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 			}
 		}
 		if (mState->Type == mState->EXPORT)
-		{
-			auto queueMap = mState->queueObject->mQueue;
-			auto tOld = queueMap.begin()->first;
-			auto tempIT = queueMap.end();
-			tempIT--;
-			auto tNew = tempIT->first;
+		{	
+			uint64_t tOld, tNew = 0;
+			queueBoundaryTS(tOld, tNew);
 			if (mState->endTime > tNew)
 			{
 				reset = false;
@@ -289,13 +294,11 @@ bool MultimediaQueue::allowFrames(uint64_t &ts, uint64_t&te)
 
 bool MultimediaQueue::process(frame_container& frames)
 {
-	mState->queueObject->enqueue(frames, pushNext);
+	mState->queueObject->enqueue(frames, mProps.lowerWaterMark, mProps.upperWaterMark, mProps.isMapDelayInTime,pushNext);
 	if (mState->Type == mState->EXPORT)
-	{
-		auto queueMap = mState->queueObject->mQueue;
-		auto tempIT = queueMap.end();
-		tempIT--;
-		auto tNew = tempIT->first;
+	{	
+		uint64_t tOld, tNew = 0;
+		queueBoundaryTS(tOld, tNew);
 		mState->endTime = tNew;
 	}
 
@@ -323,12 +326,9 @@ bool MultimediaQueue::process(frame_container& frames)
 		}
 	}
 	if (mState->Type == mState->EXPORT)
-	{
-		auto queueMap = mState->queueObject->mQueue;
-		auto tOld = queueMap.begin()->first;
-		auto tempIT = queueMap.end();
-		tempIT--;
-		auto tNew = tempIT->first;
+	{	
+		uint64_t tOld, tNew = 0;
+		queueBoundaryTS(tOld, tNew);
 		if (mState->endTime > tNew);
 		{
 			reset = false;
