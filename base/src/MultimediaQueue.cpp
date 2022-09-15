@@ -1,21 +1,19 @@
 #include <boost/filesystem.hpp>
 #include <boost/foreach.hpp>
+#include <stdafx.h>
 #include <map>
 #include "Frame.h"
 #include "MultimediaQueue.h"
 #include "Logger.h"
-#include "stdafx.h"
 
-class QueueClass 
+class QueueClass
 {
 
 public:
-	QueueClass(MultimediaQueueProps& _props) {}
-	
 	~QueueClass()
 	{}
-	
-	bool enqueue(frame_container& frames,double lowerWaterMark, double upperWaterMark, bool isMapDelayInTime, bool  pushNext)
+
+	bool enqueue(frame_container& frames, uint32_t lowerWaterMark, uint32_t upperWaterMark, bool isMapDelayInTime, bool  pushNext)
 	{	//	Here the frame_containers are inserted into the map
 		uint64_t largestTimeStamp = 0;
 		for (auto it = frames.cbegin(); it != frames.cend(); it++)
@@ -54,7 +52,7 @@ public:
 		}
 		else // If the lower and upper water mark are given in number of frames
 		{
-			if (( mQueue.size() > lowerWaterMark) && (pushNext == true))
+			if ((mQueue.size() > lowerWaterMark) && (pushNext == true))
 			{
 				mQueue.erase(mQueue.begin()->first);
 			}
@@ -82,24 +80,21 @@ public:
 };
 
 //State Design begins here
-
 class Export : public State {
 public:
 	Export() : State(StateType::EXPORT) {}
-	Export(uint64_t _startTime, uint64_t _endTime, boost::shared_ptr<QueueClass> queueObj) : State(StateType::EXPORT) {
-		startTime = _startTime;
-		endTime = _endTime;
+	Export(boost::shared_ptr<QueueClass> queueObj) : State(StateType::EXPORT) {
 		queueObject = queueObj;
 	}
 
-	bool handleExport(uint64_t &queryStart, uint64_t &queryEnd,bool & timeReset, mQueueMap& queueMap) override
-	{	
+	bool handleExport(uint64_t& queryStart, uint64_t& queryEnd, bool& timeReset, mQueueMap& queueMap) override
+	{
 		auto tOld = queueMap.begin()->first;
 		auto temp = queueMap.end();
 		temp--;
 		auto tNew = temp->first;
 		queryEnd = queryEnd - 1;
-		if ((queryStart < tOld) && (queueMap.upper_bound(queryEnd)!=queueMap.end()))
+		if ((queryStart < tOld) && (queueMap.upper_bound(queryEnd) != queueMap.end()))
 		{
 			queryStart = tOld;
 			timeReset = true;
@@ -126,14 +121,12 @@ public:
 class Waiting : public State {
 public:
 	Waiting() : State(State::StateType::WAITING) {}
-	Waiting(uint64_t _startTime, uint64_t _endTime, boost::shared_ptr<QueueClass> queueObj) : State(State::StateType::WAITING) {
-		startTime = _startTime;
-		endTime = _endTime;
+	Waiting(boost::shared_ptr<QueueClass> queueObj) : State(State::StateType::WAITING) {
 		queueObject = queueObj;
 	}
-	bool handleExport(uint64_t & queryStart, uint64_t & queryEnd,bool& timeReset, mQueueMap& queueMap) override
+	bool handleExport(uint64_t& queryStart, uint64_t& queryEnd, bool& timeReset, mQueueMap& queueMap) override
 	{
-		BOOST_LOG_TRIVIAL (info) << "WAITING STATE : THE FRAMES ARE IN FUTURE!! WE ARE WAITING FOR THEM..";
+		BOOST_LOG_TRIVIAL(info) << "WAITING STATE : THE FRAMES ARE IN FUTURE!! WE ARE WAITING FOR THEM..";
 		return true;
 	}
 };
@@ -141,22 +134,20 @@ public:
 class Idle : public State {
 public:
 	Idle() : State(StateType::IDLE) {}
-	Idle(uint64_t _startTime, uint64_t _endTime, boost::shared_ptr<QueueClass> queueObj) : State(StateType::IDLE) {
-		startTime = _startTime;
-		endTime = _endTime;
+	Idle(boost::shared_ptr<QueueClass> queueObj) : State(StateType::IDLE) {
 		queueObject = queueObj;
 	}
-	bool handleExport(uint64_t & queryStart, uint64_t & queryEnd,bool& timeReset, mQueueMap& queueMap) override
+	bool handleExport(uint64_t& queryStart, uint64_t& queryEnd, bool& timeReset, mQueueMap& queueMap) override
 	{
 		//The code will not come here
 		return true;
 	}
 };
 
-MultimediaQueue::MultimediaQueue(MultimediaQueueProps _props) :Module(TRANSFORM, "MultimediaQueue", _props),mProps(_props)
+MultimediaQueue::MultimediaQueue(MultimediaQueueProps _props) :Module(TRANSFORM, "MultimediaQueue", _props), mProps(_props)
 {
-	mState.reset(new State(_props));
-	mState->queueObject.reset(new QueueClass(_props));
+	mState.reset(new State());
+	mState->queueObject.reset(new QueueClass());
 }
 
 bool MultimediaQueue::validateInputPins()
@@ -178,6 +169,7 @@ bool MultimediaQueue::setNext(boost::shared_ptr<Module> next, bool open, bool si
 {
 	return Module::setNext(next, open, false, sieve);
 }
+
 bool MultimediaQueue::init()
 {
 	if (!Module::init())
@@ -185,7 +177,7 @@ bool MultimediaQueue::init()
 		return false;
 	}
 
-	mState.reset(new Idle(mState->startTime,mState->endTime,mState->queueObject));
+	mState.reset(new Idle(mState->queueObject));
 
 	return true;
 }
@@ -196,7 +188,7 @@ bool MultimediaQueue::term()
 	return Module::term();
 }
 
-void MultimediaQueue::queueBoundaryTS(uint64_t& tOld, uint64_t& tNew)
+void MultimediaQueue::getQueueBoundaryTS(uint64_t& tOld, uint64_t& tNew)
 {
 	auto queueMap = mState->queueObject->mQueue;
 	tOld = queueMap.begin()->first;
@@ -205,53 +197,54 @@ void MultimediaQueue::queueBoundaryTS(uint64_t& tOld, uint64_t& tNew)
 	tNew = tempIT->first;
 }
 
-void MultimediaQueue::getState(uint64_t tStart, uint64_t tEnd)
-{	
+void MultimediaQueue::setState(uint64_t tStart, uint64_t tEnd)
+{
 	uint64_t tOld, tNew = 0;
-	queueBoundaryTS(tOld, tNew);
+	getQueueBoundaryTS(tOld, tNew);
 
 	//Checking conditions to determine the new state and transitions to it.
-	
+
 	if (tEnd < tOld)
 	{
 		BOOST_LOG_TRIVIAL(info) << "IDLE STATE : MAYBE THE FRAMES HAVE PASSED THE QUEUE";
-		mState.reset(new Idle(mState->startTime, mState->endTime, mState->queueObject));
+		mState.reset(new Idle(mState->queueObject));
 	}
 	else if (tStart > tNew)
 	{
-		mState.reset(new Waiting(mState->startTime, mState->endTime, mState->queueObject));
+		mState.reset(new Waiting(mState->queueObject));
 	}
-	else 
+	else
 	{
-		mState.reset(new Export(mState->startTime, mState->endTime, mState->queueObject));
+		mState.reset(new Export(mState->queueObject));
 	}
 
 }
 
-
-bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
+bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp& frame)
 {
 	if (type == Command::CommandType::MultimediaQueue)
 	{
 		MultimediaQueueCommand cmd;
 		getCommand(cmd, frame);
-		getState(cmd.startTime, cmd.endTime);
-		mState->startTime = cmd.startTime;
+		setState(cmd.startTime, cmd.endTime);
+		queryStartTime = cmd.startTime;
 		startTimeSaved = cmd.startTime;
-		mState->endTime = cmd.endTime;
+		queryEndTime = cmd.endTime;
 		endTimeSaved = cmd.endTime;
+
 		bool reset = false;
 		bool pushNext = true;
-		if(mState->Type != mState->IDLE)
+		if (mState->Type == State::EXPORT)
 		{
-			mState->handleExport(mState->startTime, mState->endTime, reset, mState->queueObject->mQueue);
+			mState->handleExport(queryStartTime, queryEndTime, reset, mState->queueObject->mQueue);
 			for (auto it = mState->queueObject->mQueue.begin(); it != mState->queueObject->mQueue.end(); it++)
 			{
-				if (((it->first) >= mState->startTime) && (((it->first) <= mState->endTime)))
+				if (((it->first) >= queryStartTime) && (((it->first) <= queryEndTime)))
 				{
 					if (isNextModuleQueFull())
 					{
 						pushNext = false;
+						break;
 					}
 					else
 					{
@@ -260,27 +253,28 @@ bool MultimediaQueue::handleCommand(Command::CommandType type, frame_sp &frame)
 				}
 			}
 		}
+
 		if (mState->Type == mState->EXPORT)
-		{	
-			uint64_t tOld, tNew = 0;
-			queueBoundaryTS(tOld, tNew);
-			if (mState->endTime > tNew)
+		{
+			uint64_t tOld = 0, tNew = 0;
+			getQueueBoundaryTS(tOld, tNew);
+			if (endTimeSaved > tNew)
 			{
 				reset = false;
 			}
-			mState->startTime = tNew;
+			queryStartTime = tNew;
 		}
 		if (reset)
 		{
-			mState->startTime = 0;
-			mState->endTime = 0;
-			getState(mState->startTime, mState->endTime);
+			queryStartTime = 0;
+			queryEndTime = 0;
+			setState(queryStartTime, queryEndTime);
 		}
 		return true;
 	}
 }
 
-bool MultimediaQueue::allowFrames(uint64_t &ts, uint64_t&te)
+bool MultimediaQueue::allowFrames(uint64_t& ts, uint64_t& te)
 {
 	if (mState->Type != mState->EXPORT)
 	{
@@ -294,25 +288,25 @@ bool MultimediaQueue::allowFrames(uint64_t &ts, uint64_t&te)
 
 bool MultimediaQueue::process(frame_container& frames)
 {
-	mState->queueObject->enqueue(frames, mProps.lowerWaterMark, mProps.upperWaterMark, mProps.isMapDelayInTime,pushNext);
-	if (mState->Type == mState->EXPORT)
-	{	
+	mState->queueObject->enqueue(frames, mProps.lowerWaterMark, mProps.upperWaterMark, mProps.isMapDelayInTime, pushNext);
+	if (mState->Type == State::EXPORT)
+	{
 		uint64_t tOld, tNew = 0;
-		queueBoundaryTS(tOld, tNew);
-		mState->endTime = tNew;
+		getQueueBoundaryTS(tOld, tNew);
+		queryEndTime = tNew;
 	}
 
-	if (mState->Type == mState->WAITING)
+	if (mState->Type == State::WAITING)
 	{
-		getState(mState->startTime, mState->endTime);
+		setState(queryStartTime, queryEndTime);
 	}
-
-	if (mState->Type != mState->IDLE)
+	// # 14 SepReview - handleCommand case
+	if (mState->Type == State::EXPORT)
 	{
-		mState->handleExport(mState->startTime, mState->endTime,reset,mState->queueObject->mQueue);
+		mState->handleExport(queryStartTime, queryEndTime, reset, mState->queueObject->mQueue);
 		for (auto it = mState->queueObject->mQueue.begin(); it != mState->queueObject->mQueue.end(); it++)
 		{
-			if (((it->first) >= (mState->startTime + 1)) && (((it->first) <= (endTimeSaved))))
+			if (((it->first) >= (queryStartTime + 1)) && (((it->first) <= (endTimeSaved))))
 			{
 				if (isNextModuleQueFull())
 				{
@@ -325,23 +319,57 @@ bool MultimediaQueue::process(frame_container& frames)
 			}
 		}
 	}
-	if (mState->Type == mState->EXPORT)
-	{	
+	if (mState->Type == State::EXPORT)
+	{
 		uint64_t tOld, tNew = 0;
-		queueBoundaryTS(tOld, tNew);
-		if (mState->endTime > tNew);
+		getQueueBoundaryTS(tOld, tNew);
+		if (queryEndTime > tNew);
 		{
 			reset = false;
 		}
-		mState->startTime = tNew;
+		queryStartTime = tNew;
 	}
 
 	if (reset)
 	{
-		mState->startTime = 0;
-		mState->endTime = 0;
-		getState(mState->startTime, mState->endTime);
+		queryStartTime = 0;
+		queryEndTime = 0;
+		setState(queryStartTime, queryEndTime);
 	}
 	return true;
 }
 
+bool MultimediaQueue::handlePropsChange(frame_sp& frame)
+{
+	if (mState->Type != State::EXPORT)
+	{
+		MultimediaQueueProps props(10, 5, false);
+		auto ret = Module::handlePropsChange(frame, props);
+		return ret;
+		//setProps(props);
+	}
+	else
+	{
+		BOOST_LOG_TRIVIAL(info) << "Currently in export state, wait until export is completed";
+		return true;
+	}
+}
+
+MultimediaQueueProps MultimediaQueue::getProps()
+{
+	fillProps(mProps);
+	return mProps;
+}
+
+void  MultimediaQueue::setProps(MultimediaQueueProps _props)
+{
+	if (mState->Type != State::EXPORT)
+	{
+		mProps = _props;
+		Module::addPropsToQueue(mProps);
+	}
+	else
+	{
+		BOOST_LOG_TRIVIAL(info) << "Currently in export state, wait until export is completed";
+	}
+}

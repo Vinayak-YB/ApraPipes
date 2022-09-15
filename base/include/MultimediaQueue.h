@@ -8,26 +8,20 @@ class MultimediaQueueProps : public ModuleProps
 public:
 	MultimediaQueueProps() 
 	{
+		// in msec or number of frames
 		lowerWaterMark = 10000;
 		upperWaterMark = 15000;
 		isMapDelayInTime = true;
 	}
-	MultimediaQueueProps(double _lowerWaterMark = 10000,bool _isDelayTime = true)
+	MultimediaQueueProps(uint32_t queueLength = 10000, uint16_t tolerance = 5000,  bool _isDelayTime = true)
 	{
-		lowerWaterMark = _lowerWaterMark;
+		lowerWaterMark = queueLength;
+		upperWaterMark = queueLength + tolerance;
 		isMapDelayInTime = _isDelayTime;
-		if (isMapDelayInTime == true)
-		{
-			upperWaterMark = lowerWaterMark + 5000;
-		}
-		else
-		{
-			upperWaterMark = lowerWaterMark + 5;
-		}
 	}
 	
-	double lowerWaterMark; // Length of multimedia queue in terms of time or number of frames
-	double upperWaterMark; //Length of the multimedia queue when the next module queue is full
+	uint32_t lowerWaterMark; // Length of multimedia queue in terms of time or number of frames
+	uint32_t upperWaterMark; //Length of the multimedia queue when the next module queue is full
 	bool isMapDelayInTime;  
 };
 
@@ -40,13 +34,19 @@ public:
 	virtual ~MultimediaQueue() {
 	}
 
+	// variable names - start with small letters
 	bool init();
 	bool term();
-	void getState(uint64_t Ts, uint64_t Te);
+	void setState(uint64_t ts, uint64_t te);
 	bool handleCommand(Command::CommandType type, frame_sp &frame);
-	bool allowFrames(uint64_t&Ts, uint64_t &Te);
+	bool allowFrames(uint64_t &ts, uint64_t &te);
+	// default behaviour is overridden
 	bool setNext(boost::shared_ptr<Module> next, bool open = true, bool sieve = false);
-	void queueBoundaryTS(uint64_t& tOld, uint64_t& tNew);
+	void setProps(MultimediaQueueProps _props);
+	MultimediaQueueProps getProps();
+	bool handlePropsChange(frame_sp& frame);
+	boost::shared_ptr<State> mState;
+	MultimediaQueueProps mProps;
 
 protected:
 	bool process(frame_container& frames);
@@ -55,13 +55,14 @@ protected:
 	bool validateInputOutputPins();
 
 private:
+	void getQueueBoundaryTS(uint64_t& tOld, uint64_t& tNew);
+
 	bool pushNext = true;
 	bool reset = false;
 	uint64_t startTimeSaved = 0;
 	uint64_t endTimeSaved = 0;
-public:
-	boost::shared_ptr<State> mState ;
-	MultimediaQueueProps mProps;
+	uint64_t queryStartTime = 0;
+	uint64_t queryEndTime = 0;
 };
 
 class QueueClass;
@@ -70,16 +71,15 @@ class State {
 public:
 	boost::shared_ptr<QueueClass> queueObject;
 	State() {}
-	State(MultimediaQueueProps& _props) {}
+	//State(MultimediaQueueProps& _props) {}
 	virtual ~State() {}
 	typedef std::map<uint64_t, frame_container> mQueueMap;
-	virtual bool handleExport(uint64_t & queryStart, uint64_t & queryEnd, bool& timeReset, mQueueMap& mQueue) { return true; }
-	uint64_t startTime = 0;
-	uint64_t endTime = 0;
+	// check this once
+	virtual bool handleExport(uint64_t& queryStart, uint64_t& queryEnd, bool& timeReset, mQueueMap& mQueue) { return true; };
 	
 	enum StateType 
 	{
-		IDLE,
+		IDLE = 0,
 		WAITING,
 		EXPORT
 	};
